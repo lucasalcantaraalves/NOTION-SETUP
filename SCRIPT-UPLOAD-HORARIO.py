@@ -58,10 +58,11 @@ def upload_e_atualizar(file_path, service_drive, service_sheets):
         range="Página1!A1",
         valueInputOption="USER_ENTERED",
         body={"values": valores}
-
-        print("Planilha atualizada com sucesso!")
         
     ).execute()
+
+print("Planilha atualizada com sucesso!")
+
 
 # Nota: A autenticação (creds) deve ser configurada via Google Cloud Console
 # service_drive = build('drive', 'v3', credentials=creds)
