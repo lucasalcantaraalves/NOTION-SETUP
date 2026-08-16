@@ -1,0 +1,35 @@
+name: Automação Google Sheets e Drive
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # Executa todos os dias às 08:00 UTC (ajuste se necessário)
+  workflow_dispatch:     # Permite executar manualmente pelo site do GitHub quando quiser
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar ambiente Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: |
+          pip install google-api-python-client google-auth
+
+      - name: Criar arquivo temporário de credenciais
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: |
+          echo "$GOOGLE_CREDENTIALS_JSON" > credentials.json
+
+      - name: Executar script Python
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: "credentials.json"
+        run: |
+          python seu_script.py
