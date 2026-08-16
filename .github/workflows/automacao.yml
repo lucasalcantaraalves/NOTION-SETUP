@@ -32,4 +32,4 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: "credentials.json"
         run: |
-          python seu_script.py
+          python SCRIPT-UPLOAD-HORARIO.py
