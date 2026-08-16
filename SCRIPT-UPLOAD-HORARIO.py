@@ -65,4 +65,4 @@ if __name__ == "__main__":
     # 2. Faz o upload para o Drive e atualiza a planilha do Sheets
     upload_e_atualizar(arquivo_gerado, service_drive, service_sheets)
     
-    print("Processo concluído com sucesso!")dentials=creds)
+    print("Processo concluído com sucesso!")
