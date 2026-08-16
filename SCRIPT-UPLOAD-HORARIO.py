@@ -29,6 +29,9 @@ def criar_log():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(FILE_NAME, "w") as f:
         f.write(f"Timestamp,{timestamp}\n") # Formato CSV para facilitar o Sheets
+
+    print("Arquivo CSV criado com sucesso!")
+    
     return FILE_NAME
 
 def upload_e_atualizar(file_path, service_drive, service_sheets):
@@ -43,6 +46,8 @@ def upload_e_atualizar(file_path, service_drive, service_sheets):
     
     media = MediaFileUpload(file_path, mimetype='text/csv')
     file = service_drive.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+    print("Upload para o Drive realizado com ID:", file.get('id'))
     
     # 2. Importar para o Sheets (append na primeira aba)
     with open(file_path, "r") as f:
@@ -53,6 +58,9 @@ def upload_e_atualizar(file_path, service_drive, service_sheets):
         range="Página1!A1",
         valueInputOption="USER_ENTERED",
         body={"values": valores}
+
+        print("Planilha atualizada com sucesso!")
+        
     ).execute()
 
 # Nota: A autenticação (creds) deve ser configurada via Google Cloud Console
