@@ -2,6 +2,16 @@ import os
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
+
+# O Google lê automaticamente a variável GOOGLE_APPLICATION_CREDENTIALS
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+creds = service_account.Credentials.from_service_account_file(
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'], scopes=SCOPES
+)
+
+service_drive = build('drive', 'v3', credentials=creds)
+service_sheets = build('sheets', 'v4', credentials=creds)
 
 # Configurações iniciais
 FILE_NAME = "log_execucao.txt"
