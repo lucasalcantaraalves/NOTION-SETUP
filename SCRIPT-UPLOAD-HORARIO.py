@@ -1,21 +1,29 @@
 import os
-from datetime import datetime
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google.oauth2 import service_account
+from datetime import datetime
 
-# O Google lê automaticamente a variável GOOGLE_APPLICATION_CREDENTIALS
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+# IDs configurados corretamente
+SHEET_ID = "1UN08EyAA6gj8tiUXLWpzoRNiucaHrr_xHtu8j6UnLfw"
+PASTA_DESTINO_ID = "13-RfMhN9tNJgrya8YDyIBMnBGQq73fvS" # Se for salvar em pasta específica (ou remova se for na raiz)
+FILE_NAME = "log_execucao.csv"
+
+# Autenticação usando o arquivo gerado pelo GitHub Actions
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
+
+# O Google lê a variável GOOGLE_APPLICATION_CREDENTIALS automaticamente, 
+# mas podemos carregar explicitamente para garantir:
 creds = service_account.Credentials.from_service_account_file(
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'], scopes=SCOPES
+    os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'credentials.json'), 
+    scopes=SCOPES
 )
 
 service_drive = build('drive', 'v3', credentials=creds)
 service_sheets = build('sheets', 'v4', credentials=creds)
-
-# Configurações iniciais
-FILE_NAME = "log_execucao.txt"
-SHEET_ID = "1UN08EyAA6gj8tiUXLWpzoRNiucaHrr_xHtu8j6UnLfw" # ID encontrado na URL da planilha
 
 def criar_log():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
