@@ -49,7 +49,7 @@ def sincronizar_db(db_id, aba_nome):
 
 # EXECUÇÃO DAS DUAS BASES
 # Base 1 (Página 1)
-sincronizar_db('312b40ec7cd4807fa77dc62a474bc6b4', 'Página1')
+sincronizar_db('312b40ec7cd4807fa77dc62a474bc6b4', 'Master')
 
 # Base 2 (Página 2)
-sincronizar_db('30ab40ec7cd48071aca9fc8d5ac81e6a', 'Página2')
+sincronizar_db('30ab40ec7cd48071aca9fc8d5ac81e6a', 'Embarques')
