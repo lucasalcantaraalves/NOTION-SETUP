@@ -22,6 +22,6 @@ jobs:
 
       - name: Run script
         env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }} # <--- Adicione esta linha
         run: python SCRIPT-UPLOAD-HORARIO.py
