@@ -149,6 +149,10 @@ def sincronizar_tudo():
 
     print("🚀 Planilha atualizada com sucesso com os dados do Notion!")
 
+# === PARA SALVAR O CSV COMO ARTIFACT===
+    df_notion.to_csv("log_execucao.csv", index=False, encoding='utf-8-sig')
+    print("📁 Arquivo CSV salvo com sucesso!")
+
 
 if __name__ == "__main__":
     sincronizar_tudo()
