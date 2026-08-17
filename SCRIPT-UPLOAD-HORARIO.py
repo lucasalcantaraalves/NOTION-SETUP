@@ -110,6 +110,9 @@ def sincronizar_tudo():
 
     df_notion = nsync.format_dataframe(results)
 
+    # TRATAMENTO CRUCIAL: Substitui NaN, Nones e nulos por strings vazias para evitar erro 400 no JSON
+    df_notion = df_notion.fillna("")
+
     # Prepara os dados para inserir na planilha
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -124,9 +127,10 @@ def sincronizar_tudo():
     if not df_notion.empty:
         # Cabeçalho das colunas do Notion
         valores_para_planilha.append(list(df_notion.columns))
-        # Linhas de dados do Notion convertidas para lista
+        # Linhas de dados do Notion convertidas para lista (garantindo conversão para string/tipos seguros)
         for _, row in df_notion.iterrows():
-            valores_para_planilha.append(list(row.values))
+            linha_limpa = [str(val) if val != "" else "" for val in row.values]
+            valores_para_planilha.append(linha_limpa)
 
     # Limpa os dados anteriores da aba "Página1"
     service_sheets.spreadsheets().values().clear(
