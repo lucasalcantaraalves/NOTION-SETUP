@@ -13,7 +13,7 @@ NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
 if not NOTION_TOKEN:
     raise ValueError("A variável de ambiente NOTION_TOKEN não foi encontrada!")
 
-creds_json_str = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+creds_json_str = os.environ.get('GOOGLE_CREDENTIALS_JSON')
 if not creds_json_str:
     raise ValueError("A variável de ambiente GOOGLE_APPLICATION_CREDENTIALS_JSON não foi encontrada! Verifique os Secrets no GitHub.")
 
