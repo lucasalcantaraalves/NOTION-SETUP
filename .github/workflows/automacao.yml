@@ -30,7 +30,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: relatorio-notion
-          path: log_execucao.csv
+          path: log_*.csv
 
 
 
