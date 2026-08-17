@@ -26,8 +26,4 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }} # <--- Adicione esta linha
         run: python SCRIPT-UPLOAD-HORARIO.py
 
-       - name: Salvar CSV como Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: relatorio-notion
-          path: log_execucao.csv
+
