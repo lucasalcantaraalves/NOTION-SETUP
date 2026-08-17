@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 import pandas as pd
 from datetime import datetime
@@ -9,20 +10,20 @@ from googleapiclient.discovery import build
 SHEET_ID = "1UN08EyAA6gj8tiUXLWpzoRNiucaHrr_xHtu8j6UnLfw"
 DATABASE_ID = '312b40ec7cd4807fa77dc62a474bc6b4'
 
-# Puxa o token com segurança do ambiente do GitHub Actions
+# Puxa o token do Notion com segurança
 NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
 if not NOTION_TOKEN:
     raise ValueError("A variável de ambiente NOTION_TOKEN não foi configurada!")
 
-# Autenticação Google Sheets
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets'
-]
+# Autenticação Google Sheets lida de forma segura da variável de ambiente (JSON)
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-creds = service_account.Credentials.from_service_account_file(
-    os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'credentials.json'), 
-    scopes=SCOPES
-)
+creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+if not creds_json:
+    raise ValueError("A variável de ambiente GOOGLE_CREDENTIALS_JSON não foi configurada!")
+
+creds_info = json.loads(creds_json)
+creds = service_account.Credentials.from_service_account_info(creds_info, scopes=SCOPES)
 service_sheets = build('sheets', 'v4', credentials=creds)
 
 
