@@ -8,28 +8,20 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Baixar código do repositório
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configurar ambiente Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Instalar dependências
-        run: |
-          pip install google-api-python-client google-auth
+      - name: Install dependencies
+        run: pip install requests pandas google-api-python-client google-auth
 
-      - name: Criar arquivo temporário de credenciais
+      - name: Run script
         env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-        run: |
-          echo "$GOOGLE_CREDENTIALS_JSON" > credentials.json
-
-      - name: Executar script Python
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: "credentials.json"
-        run: |
-          python SCRIPT-UPLOAD-HORARIO.py
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }} # <--- Adicione esta linha
+        run: python SCRIPT-UPLOAD-HORARIO.py
