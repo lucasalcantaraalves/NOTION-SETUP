@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 # Configurações de Autenticação
 SHEET_ID = "1UN08EyAA6gj8tiUXLWpzoRNiucaHrr_xHtu8j6UnLfw"
 NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
-creds_json = json.loads(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON'))
+creds_json = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
 creds = service_account.Credentials.from_service_account_info(creds_json, scopes=['https://www.googleapis.com/auth/spreadsheets'])
 service_sheets = build('sheets', 'v4', credentials=creds)
 
