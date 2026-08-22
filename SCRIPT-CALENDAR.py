@@ -99,10 +99,16 @@ def sincronizar_com_calendar():
         start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
         end_dt = start_dt + timedelta(hours=1)
 
-        # 3. Extração da Categoria / Propriedade de Cor no Notion
-        # (Supondo que no Notion exista uma propriedade do tipo 'select' chamada "Categoria")
-        categoria_prop = props.get("Categoria", {}).get("select")
-        nome_categoria = categoria_prop.get("name") if categoria_prop else ""
+       # 3. Extração correta para Multi-select
+        categoria_prop = props.get("Categoria", {})
+        nome_categoria = ""
+        
+        # Verifica se é multi_select e se há itens lá dentro
+        if categoria_prop.get("type") == "multi_select":
+            itens = categoria_prop.get("multi_select", [])
+            if itens:
+                # Pega o nome do primeiro item da lista de seleção múltipla
+                nome_categoria = itens[0].get("name", "")
 
         # Descobre o ID da cor com base na categoria (se não achar, o Google usa a cor padrão do calendário)
         color_id = MAPA_CORES.get(nome_categoria)
