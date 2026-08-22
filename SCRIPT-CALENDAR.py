@@ -23,7 +23,7 @@ service_calendar = build('calendar', 'v3', credentials=creds)
 
 # ID da database do Notion que você quer monitorar
 DATABASE_ID = "312b40ec7cd4807fa77dc62a474bc6b4" # Substitua se for outra base
-CALENDAR_ID = "primary" # 'primary' é o calendário principal da conta da service account ou o ID do seu Google Calendar
+CALENDAR_ID = "e14lucasdejesus@gmail.com" # 'primary' é o calendário principal da conta da service account ou o ID do seu Google Calendar
 
 headers = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
