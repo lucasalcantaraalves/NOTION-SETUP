@@ -16,14 +16,12 @@ if not creds_json_str:
 
 creds_json = json.loads(creds_json_str)
 
-# ATENÇÃO: É necessário incluir o escopo do Calendar além do Sheets
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 creds = service_account.Credentials.from_service_account_info(creds_json, scopes=SCOPES)
 service_calendar = build('calendar', 'v3', credentials=creds)
 
-# ID da database do Notion que você quer monitorar
-DATABASE_ID = "312b40ec7cd4807fa77dc62a474bc6b4" # Substitua se for outra base
-CALENDAR_ID = "e14lucasdejesus@gmail.com" # 'primary' é o calendário principal da conta da service account ou o ID do seu Google Calendar
+DATABASE_ID = "312b40ec7cd4807fa77dc62a474bc6b4"
+CALENDAR_ID = "e14lucasdejesus@gmail.com" # Substitua pelo seu ID de calendário correto
 
 headers = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -32,15 +30,15 @@ headers = {
 }
 
 def sincronizar_com_calendar():
-    print("🔄 Buscando itens pendentes no Notion...")
+    print("🔄 Sincronizando itens do Notion com o Google Calendar...")
     
-    # Query para buscar apenas onde o checkbox está desmarcado (False)
+    # Busca todas as páginas da base que possuem Data preenchida
     url = f"https://api.notion.com/v1/databases/{DATABASE_ID}/query"
     payload = {
         "filter": {
-            "property": "Status Calendar",
-            "checkbox": {
-                "equals": False
+            "property": "Due Date",
+            "date": {
+                "is_not_empty": True
             }
         }
     }
@@ -50,7 +48,7 @@ def sincronizar_com_calendar():
         raise Exception(f"Erro ao buscar dados do Notion: {response.text}")
         
     pages = response.json().get("results", [])
-    print(f"✅ {len(pages)} novos itens encontrados para sincronizar com o Calendar.")
+    print(f"✅ {len(pages)} itens com data encontrados para verificar/sincronizar.")
     
     for page in pages:
         page_id = page["id"]
@@ -63,18 +61,17 @@ def sincronizar_com_calendar():
         # 2. Extração da Data
         data_prop = props.get("Due Date", {}).get("date")
         if not data_prop or not data_prop.get("start"):
-            print(f"⚠️ Item '{titulo_evento}' ignorado: Sem data definida.")
             continue
             
         start_str = data_prop.get("start")
-        
-        # Converte a string do Notion para objeto datetime (assume 00:00:00 se não houver hora)
         start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-        
-        # Define o fim como 1 hora após o início
         end_dt = start_dt + timedelta(hours=1)
 
-        # 3. Montar o corpo do evento com fuso horário e duração de 1 hora
+        # 3. Extração do Event ID existente no Notion
+        event_id_prop = props.get("Calendar Event ID", {}).get("rich_text", [])
+        calendar_event_id = "".join([t.get("plain_text", "") for t in event_id_prop]) if event_id_prop else ""
+
+        # Montar o corpo do evento
         evento_body = {
             'summary': titulo_evento,
             'start': {
@@ -88,23 +85,34 @@ def sincronizar_com_calendar():
         }
         
         try:
-            service_calendar.events().insert(calendarId=CALENDAR_ID, body=evento_body).execute()
-            print(f"📅 Evento criado no Calendar: {titulo_evento} ({start_str})")
-            
-            # 4. Marcar o checkbox como True no Notion para não processar de novo
-            update_url = f"https://api.notion.com/v1/pages/{page_id}"
-            update_payload = {
-                "properties": {
-                    "Status Calendar": {
-                        "checkbox": True
+            if not calendar_event_id:
+                # CRIAR NOVO EVENTO
+                created_event = service_calendar.events().insert(calendarId=CALENDAR_ID, body=evento_body).execute()
+                new_event_id = created_event.get('id')
+                print(f"📅 Evento criado: {titulo_evento}")
+                
+                # Salvar o ID do Google Calendar e marcar o checkbox no Notion
+                update_url = f"https://api.notion.com/v1/pages/{page_id}"
+                update_payload = {
+                    "properties": {
+                        "Calendar Event ID": {
+                            "rich_text": [{"text": {"content": new_event_id}}]
+                        },
+                        "Status Calendar": {
+                            "checkbox": True
+                        }
                     }
                 }
-            }
-            patch_resp = requests.patch(update_url, headers=headers, json=update_payload)
-            if patch_resp.status_code == 200:
-                print(f"✔️ Checkbox marcado como True no Notion para: {titulo_evento}")
+                requests.patch(update_url, headers=headers, json=update_payload)
+                
             else:
-                print(f"❌ Erro ao atualizar checkbox no Notion: {patch_resp.text}")
+                # ATUALIZAR EVENTO EXISTENTE (Caso tenha mudado a data ou nome no Notion)
+                service_calendar.events().update(
+                    calendarId=CALENDAR_ID, 
+                    eventId=calendar_event_id, 
+                    body=evento_body
+                ).execute()
+                print(f"🔄 Evento atualizado: {titulo_evento}")
                 
         except Exception as e:
             print(f"❌ Erro ao processar o evento '{titulo_evento}': {str(e)}")
