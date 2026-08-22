@@ -101,6 +101,9 @@ def sincronizar_com_calendar():
         # Descobre o ID da cor com base na categoria (se não achar, o Google usa a cor padrão do calendário)
         color_id = MAPA_CORES.get(nome_categoria)
 
+        # Adicione esta linha no seu script para ver se ele está lendo a cor:
+        print(f"DEBUG: Categoria encontrada: '{nome_categoria}' -> Cor ID: '{color_id}'")
+
         # 4. Extração do Event ID existente no Notion
         event_id_prop = props.get("Calendar Event ID", {}).get("rich_text", [])
         calendar_event_id = "".join([t.get("plain_text", "") for t in event_id_prop]) if event_id_prop else ""
