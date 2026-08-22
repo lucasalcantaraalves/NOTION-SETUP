@@ -21,33 +21,25 @@ creds = service_account.Credentials.from_service_account_info(creds_json, scopes
 service_calendar = build('calendar', 'v3', credentials=creds)
 
 DATABASE_ID = "312b40ec7cd4807fa77dc62a474bc6b4"
-CALENDAR_ID = "e14lucasdejesus@gmail.com" # Substitua pelo seu ID de calendário correto
+CALENDAR_ID = "e14lucasdejesus@gmail.com"
 
 # MAPEAMENTO DE CORES (Valor do Notion -> ID de Cor do Google Calendar)
-# Você pode alterar as palavras e os números (de 1 a 11) conforme sua preferência
 MAPA_CORES = {
-    "Nutricionista": "4",    #Flamingo (Rosa/Vermelho claro)
-    "Protocolo": "4",   
-    "Treino": "4", 
-    "Exame Médico": "4",  
+    "Nutricionista": "4",
+    "Protocolo": "4",
+    "Treino": "4",
+    "Exame Médico": "4",
     "Consulta": "4",
     "Consulta Médica": "4",
-    "Salém": "2",            #Sálvia (Verde claro)
+    "Salém": "2",
     "Dudu": "2",
-    "Conta": "1",      
-    "Pessoal": "6"      
+    "Conta": "1",
+    "Pessoal": "6",
+    "Documento": "8"
 
-#1: Lavanda (Azul claro)
-#2: Sálvia (Verde claro)
-#3: Uva (Roxo)
-#4: Flamingo (Rosa/Vermelho claro)
-#5: Banana (Amarelo)
-#6: Tangerina (Laranja)
-#7: Pavão (Azul escuro)
-#8: Grafite (Cinza)
-#9: Mirtilo (Azul)
-#10: Manjucada / Verde escuro
-#11: Tomate (Vermelho)
+    # Legenda de Cores do Google Calendar:
+    #1: Lavanda (Azul claro) #2: Sálvia (Verde claro) #3: Uva (Roxo) #4: Flamingo (Rosa/Vermelho claro) #5: Banana (Amarelo)
+    #6: Tangerina (Laranja) #7: Pavão (Azul escuro) #8: Grafite (Cinza) #9: Mirtilo (Azul) #10: Manjucada / Verde escuro #11: Tomate (Vermelho)
 }
 
 headers = {
@@ -67,24 +59,7 @@ def sincronizar_com_calendar():
     
     for page in pages:
         props = page.get("properties", {})
-        
-        # --- DIAGNÓSTICO DE PROPRIEDADES ---
-        # Se o seu campo de categoria não está sendo lido, imprima todas as chaves
-        # para descobrirmos o nome exato.
-        keys = list(props.keys())
-        # print(f"DEBUG: Chaves disponíveis na página: {keys}") 
-        
-        # Tente encontrar o campo de Categoria/Tags (ajuste aqui se o nome for diferente)
-        # Se a sua coluna se chama "Tags" ou "Tipo", coloque aqui:
-        categoria_data = props.get("Categoria") or props.get("Tags") or props.get("Tipo")
-        
-        nome_categoria = ""
-        if categoria_data and categoria_data.get("type") == "multi_select":
-            items = categoria_data.get("multi_select", [])
-            if items:
-                nome_categoria = items[0].get("name", "")
-        
-        print(f"DEBUG: Item encontrado. Campo 'Categoria' lido como: '{nome_categoria}'")
+        page_id = page.get("id")
         
         # 1. Extração do Título
         nome_prop = props.get("Name", {}).get("title", [])
@@ -99,22 +74,17 @@ def sincronizar_com_calendar():
         start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
         end_dt = start_dt + timedelta(hours=1)
 
-       # 3. Extração correta para Multi-select
+        # 3. Extração da Categoria (Multi-select)
         categoria_prop = props.get("Categoria", {})
         nome_categoria = ""
         
-        # Verifica se é multi_select e se há itens lá dentro
         if categoria_prop.get("type") == "multi_select":
             itens = categoria_prop.get("multi_select", [])
             if itens:
-                # Pega o nome do primeiro item da lista de seleção múltipla
                 nome_categoria = itens[0].get("name", "")
 
-        # Descobre o ID da cor com base na categoria (se não achar, o Google usa a cor padrão do calendário)
+        # Descobre o ID da cor com base na categoria
         color_id = MAPA_CORES.get(nome_categoria)
-
-        # Adicione esta linha no seu script para ver se ele está lendo a cor:
-        print(f"DEBUG: Categoria encontrada: '{nome_categoria}' -> Cor ID: '{color_id}'")
 
         # 4. Extração do Event ID existente no Notion
         event_id_prop = props.get("Calendar Event ID", {}).get("rich_text", [])
@@ -133,7 +103,6 @@ def sincronizar_com_calendar():
             }
         }
         
-        # Se encontrou uma cor mapeada, adiciona ao corpo do evento
         if color_id:
             evento_body['colorId'] = color_id
         
@@ -159,7 +128,7 @@ def sincronizar_com_calendar():
                 requests.patch(update_url, headers=headers, json=update_payload)
                 
             else:
-                # ATUALIZAR EVENTO EXISTENTE (incluindo mudança de cor, data ou título)
+                # ATUALIZAR EVENTO EXISTENTE
                 service_calendar.events().update(
                     calendarId=CALENDAR_ID, 
                     eventId=calendar_event_id, 
