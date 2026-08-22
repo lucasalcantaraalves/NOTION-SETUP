@@ -60,25 +60,31 @@ def sincronizar_com_calendar():
     print("🔄 Sincronizando itens do Notion com o Google Calendar...")
     
     url = f"https://api.notion.com/v1/databases/{DATABASE_ID}/query"
-    payload = {
-        "filter": {
-            "property": "Due Date",
-            "date": {
-                "is_not_empty": True
-            }
-        }
-    }
+    payload = {"filter": {"property": "Due Date", "date": {"is_not_empty": True}}}
     
     response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        raise Exception(f"Erro ao buscar dados do Notion: {response.text}")
-        
     pages = response.json().get("results", [])
-    print(f"✅ {len(pages)} itens com data encontrados.")
     
     for page in pages:
-        page_id = page["id"]
         props = page.get("properties", {})
+        
+        # --- DIAGNÓSTICO DE PROPRIEDADES ---
+        # Se o seu campo de categoria não está sendo lido, imprima todas as chaves
+        # para descobrirmos o nome exato.
+        keys = list(props.keys())
+        # print(f"DEBUG: Chaves disponíveis na página: {keys}") 
+        
+        # Tente encontrar o campo de Categoria/Tags (ajuste aqui se o nome for diferente)
+        # Se a sua coluna se chama "Tags" ou "Tipo", coloque aqui:
+        categoria_data = props.get("Categoria") or props.get("Tags") or props.get("Tipo")
+        
+        nome_categoria = ""
+        if categoria_data and categoria_data.get("type") == "multi_select":
+            items = categoria_data.get("multi_select", [])
+            if items:
+                nome_categoria = items[0].get("name", "")
+        
+        print(f"DEBUG: Item encontrado. Campo 'Categoria' lido como: '{nome_categoria}'")
         
         # 1. Extração do Título
         nome_prop = props.get("Name", {}).get("title", [])
