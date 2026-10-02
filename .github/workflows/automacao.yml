@@ -1,13 +1,13 @@
-name: Automação Google Sheets e Drive
+name: Teste Microsoft Graph
 
 on:
-  schedule:
-    - cron: '0 8 * * *' # Executa todos os dias às 08:00 UTC (ajuste se necessário)
-  workflow_dispatch:     # Permite executar manualmente pelo site do GitHub quando quiser
+  workflow_dispatch:
 
 jobs:
-  run-script:
+  teste-microsoft:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,26 +18,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install requests pandas google-api-python-client google-auth
+        run: python -m pip install msal requests
 
-      - name: Run script
+      - name: Localizar Excel no OneDrive
         env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }} # <--- Adicione esta linha
-        run: python SCRIPT-UPLOAD-HORARIO.py
-
-      - name: Salvar CSV como Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: relatorio-notion
-
-          path: log_*.csv
-
-      - name: Run Calendar Sync Script
-        env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-        run: python SCRIPT-CALENDAR.py
-
-
-
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          PYTHONUNBUFFERED: '1'
+        run: python -u TESTE-AUTH-MICROSOFT.py
