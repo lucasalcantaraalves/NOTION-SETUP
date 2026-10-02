@@ -1,0 +1,25 @@
+name: Teste Microsoft Graph
+
+on:
+  workflow_dispatch:
+
+jobs:
+  teste-microsoft:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install msal requests
+
+      - name: Testar autenticação Microsoft Graph
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+        run: python TESTE-AUTH-MICROSOFT.py
