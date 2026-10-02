@@ -1,0 +1,14 @@
+name: Gerar chave MS Cache
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gerar-chave:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Gerar chave aleatória
+        run: |
+          python -c "import secrets; print(secrets.token_urlsafe(32))"
+
