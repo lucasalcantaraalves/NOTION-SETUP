@@ -41,6 +41,8 @@ jobs:
           key: msal-auth-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             msal-auth-${{ runner.os }}-
+            msal-cache-${{ runner.os }}-
+            msal-
 
       - name: Verificar arquivos da automacao
         run: |
