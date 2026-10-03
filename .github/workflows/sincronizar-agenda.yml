@@ -1,0 +1,48 @@
+name: Sincronizar tbAgenda com Outlook
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restaurar cache MSAL criptografado
+        uses: actions/cache/restore@v4
+        with:
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}
+          restore-keys: |
+            msal-cache-
+
+      - name: Instalar dependencias
+        run: python -m pip install --upgrade msal requests cryptography
+
+      - name: Sincronizar linhas ativas com Outlook
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
+        run: python -u SINCRONIZAR-AGENDA.py
+
+      - name: Salvar cache MSAL criptografado atualizado
+        if: always() && hashFiles('.auth/msal_cache.bin') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}
