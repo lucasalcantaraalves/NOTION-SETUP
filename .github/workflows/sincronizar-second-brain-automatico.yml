@@ -2,9 +2,8 @@ name: Sincronizar Second Brain automaticamente
 
 on:
   workflow_dispatch:
-
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: "0 */6 * * *"
 
 permissions:
   contents: read
@@ -24,46 +23,42 @@ jobs:
       MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
       MS_CACHE_FILE: .msal_cache.enc
       SB_TIME_ZONE: America/New_York
+      SB_FORCE_LOGIN: "0"
 
     steps:
-      - name: Baixar repositório
+      - name: Baixar repositorio
         uses: actions/checkout@v4
 
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: pip
+          python-version: "3.12"
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install msal requests cryptography
 
-      - name: Validar secrets obrigatórios
+      - name: Validar secrets obrigatorios
+        shell: bash
         env:
           MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
         run: |
           set -euo pipefail
 
-          if [ -z "${MS_CLIENT_ID:-}" ]; then
-            echo "::error::O secret MS_CLIENT_ID não está configurado."
-            exit 1
-          fi
+          for nome in MS_CLIENT_ID MS_CACHE_KEY MSAL_CACHE_B64; do
+            if [ -z "${!nome:-}" ]; then
+              echo "::error::O secret $nome nao esta configurado ou esta vazio."
+              exit 1
+            fi
+          done
 
-          if [ -z "${MS_CACHE_KEY:-}" ]; then
-            echo "::error::O secret MS_CACHE_KEY não está configurado."
-            exit 1
-          fi
-
-          if [ -z "${MSAL_CACHE_B64:-}" ]; then
-            echo "::error::O secret MSAL_CACHE_B64 não está configurado."
-            exit 1
-          fi
-
-          echo "Secrets obrigatórios encontrados."
+          echo "Secrets obrigatorios encontrados."
 
       - name: Restaurar cache MSAL
+        shell: bash
         env:
           MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
         run: |
@@ -77,13 +72,14 @@ jobs:
           chmod 600 "$MS_CACHE_FILE"
 
           if [ ! -s "$MS_CACHE_FILE" ]; then
-            echo "::error::O cache MSAL restaurado está vazio."
+            echo "::error::O cache MSAL restaurado esta vazio."
             exit 1
           fi
 
           echo "Cache MSAL restaurado com sucesso."
 
-      - name: Confirmar arquivos necessários
+      - name: Confirmar arquivos necessarios
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -95,57 +91,58 @@ jobs:
 
           for arquivo in "${arquivos[@]}"; do
             if [ ! -f "$arquivo" ]; then
-              echo "::error::Arquivo não encontrado: $arquivo"
+              echo "::error::Arquivo nao encontrado na raiz do repositorio: $arquivo"
               exit 1
             fi
           done
 
-          echo "Todos os scripts necessários estão presentes."
+          echo "Todos os scripts necessarios estao presentes."
 
       - name: Validar sintaxe dos scripts
+        shell: bash
         run: |
           set -euo pipefail
-
           python -m py_compile \
             SINCRONIZAR-DOCUMENTOS-AGENDA.py \
             SINCRONIZAR-AGENDA.py \
             SINCRONIZAR-TODO.py
-
-          echo "Sintaxe dos scripts validada."
+          echo "Sintaxe Python validada."
 
       - name: Sincronizar documentos com a agenda
+        shell: bash
         run: |
           set -euo pipefail
           python SINCRONIZAR-DOCUMENTOS-AGENDA.py
 
       - name: Sincronizar agenda com o Outlook
+        shell: bash
         run: |
           set -euo pipefail
           python SINCRONIZAR-AGENDA.py
 
-      - name: Sincronizar To Do
+      - name: Sincronizar Microsoft To Do
+        shell: bash
         env:
           SB_TODO_TABLE: tbTodo
-          SB_FORCE_LOGIN: '0'
-          SB_RECREATE_MISSING: '0'
+          SB_RECREATE_MISSING: "0"
         run: |
           set -euo pipefail
           python SINCRONIZAR-TODO.py
 
-      - name: Preparar cache atualizado
+      - name: Verificar cache ao final
         if: always()
+        shell: bash
         run: |
           set -euo pipefail
 
           if [ ! -s "$MS_CACHE_FILE" ]; then
-            echo "::error::O cache MSAL atualizado não foi encontrado."
+            echo "::error::O cache MSAL nao foi encontrado ao final da execucao."
             exit 1
           fi
 
           cp "$MS_CACHE_FILE" msal-cache-atualizado.enc
           base64 -w 0 "$MS_CACHE_FILE" > msal-cache-atualizado.b64
-
-          echo "Cache atualizado preparado."
+          echo "Cache atualizado preparado para armazenamento temporario."
 
       - name: Publicar cache atualizado
         if: always()
