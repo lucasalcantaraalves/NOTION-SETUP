@@ -1,6 +1,4 @@
-"""Categorias visuais das Areas do Second Brain no Outlook."""
-
-from __future__ import annotations
+"""Categorias das Areas do Second Brain no Outlook."""
 
 import unicodedata
 from urllib.parse import quote
@@ -10,7 +8,6 @@ import requests
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 REQUEST_TIMEOUT = 60
-
 
 CATEGORIAS_AREA = {
     "malkuth": {
@@ -50,7 +47,7 @@ CATEGORIAS_AREA = {
 }
 
 
-def normalizar_texto(valor: object) -> str:
+def normalizar_texto(valor):
     texto = unicodedata.normalize(
         "NFKD",
         str(valor or ""),
@@ -67,7 +64,7 @@ def normalizar_texto(valor: object) -> str:
     )
 
 
-def chave_da_area(area: object) -> str | None:
+def chave_da_area(area):
     texto = normalizar_texto(area)
 
     for chave in CATEGORIAS_AREA:
@@ -77,7 +74,7 @@ def chave_da_area(area: object) -> str | None:
     return None
 
 
-def categoria_da_area(area: object) -> str | None:
+def categoria_da_area(area):
     chave = chave_da_area(area)
 
     if not chave:
@@ -86,7 +83,7 @@ def categoria_da_area(area: object) -> str | None:
     return CATEGORIAS_AREA[chave]["display_name"]
 
 
-def categorias_da_area(area: object) -> list[str\]:
+def categorias_da_area(area):
     categoria = categoria_da_area(area)
 
     if not categoria:
@@ -95,9 +92,7 @@ def categorias_da_area(area: object) -> list[str\]:
     return [categoria]
 
 
-def headers_graph(
-    access_token: str,
-) -> dict[str, str\]:
+def headers_graph(access_token):
     return {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
@@ -106,9 +101,9 @@ def headers_graph(
 
 
 def listar_categorias(
-    access_token: str,
-    timeout: int = REQUEST_TIMEOUT,
-) -> dict[str, dict\]:
+    access_token,
+    timeout=REQUEST_TIMEOUT,
+):
     response = requests.get(
         f"{GRAPH_BASE_URL}/me/outlook/masterCategories",
         headers=headers_graph(access_token),
@@ -130,11 +125,11 @@ def listar_categorias(
 
 
 def criar_categoria(
-    access_token: str,
-    display_name: str,
-    color: str,
-    timeout: int = REQUEST_TIMEOUT,
-) -> dict:
+    access_token,
+    display_name,
+    color,
+    timeout=REQUEST_TIMEOUT,
+):
     response = requests.post(
         f"{GRAPH_BASE_URL}/me/outlook/masterCategories",
         headers=headers_graph(access_token),
@@ -154,11 +149,11 @@ def criar_categoria(
 
 
 def atualizar_cor_categoria(
-    access_token: str,
-    categoria_id: str,
-    color: str,
-    timeout: int = REQUEST_TIMEOUT,
-) -> dict:
+    access_token,
+    categoria_id,
+    color,
+    timeout=REQUEST_TIMEOUT,
+):
     categoria_id_codificado = quote(
         str(categoria_id),
         safe="",
@@ -185,9 +180,9 @@ def atualizar_cor_categoria(
 
 
 def garantir_categorias(
-    access_token: str,
-    timeout: int = REQUEST_TIMEOUT,
-) -> None:
+    access_token,
+    timeout=REQUEST_TIMEOUT,
+):
     print()
     print("=" * 70)
     print("CATEGORIAS DAS AREAS NO OUTLOOK")
@@ -205,7 +200,6 @@ def garantir_categorias(
     for configuracao in CATEGORIAS_AREA.values():
         nome = configuracao["display_name"]
         cor = configuracao["color"]
-
         atual = existentes.get(nome)
 
         if not atual:
