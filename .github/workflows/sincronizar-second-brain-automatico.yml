@@ -5,28 +5,132 @@ on:
 
   schedule:
     # GitHub Actions usa UTC.
-    # Executa a cada 6 horas, no minuto 17.
+    # Verificacao leve de alteracao a cada 15 minutos.
+    # A cada 6 horas, no minuto 17, executa a sincronizacao completa de seguranca.
+    - cron: "*/15 * * * *"
     - cron: "17 */6 * * *"
 
 permissions:
   contents: read
 
-concurrency:
-  group: sincronizar-second-brain-outlook
-  cancel-in-progress: false
-
 env:
   PYTHONUNBUFFERED: "1"
   MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
   MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
+  MS_CACHE_FILE: .auth/msal_cache.bin
 
 jobs:
+  verificar-alteracao:
+    name: Verificar alteracao do Excel
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      executar: ${{ steps.verificar.outputs.executar }}
+      etag: ${{ steps.verificar.outputs.etag }}
+      modificado_em: ${{ steps.verificar.outputs.modificado_em }}
+
+    steps:
+      - name: Baixar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias do verificador
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install msal requests cryptography
+
+      - name: Restaurar cache de autenticacao
+        id: restaurar-cache-msal
+        uses: actions/cache/restore@v4
+        with:
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            msal-cache-
+
+      - name: Aplicar cache renovado com Tasks.ReadWrite
+        env:
+          MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
+        run: |
+          if [ -n "${MSAL_CACHE_B64:-}" ]; then
+            mkdir -p .auth
+            printf '%s' "$MSAL_CACHE_B64" \
+              | tr -d '\r\n ' \
+              | base64 --decode \
+              > .auth/msal_cache.bin
+            chmod 600 .auth/msal_cache.bin
+            echo "Cache renovado aplicado."
+          else
+            echo "MSAL_CACHE_B64 nao configurado. Mantendo cache restaurado."
+          fi
+
+      - name: Verificar secrets
+        run: |
+          test -n "$MS_CLIENT_ID" || {
+            echo "ERRO: MS_CLIENT_ID nao configurado."
+            exit 1
+          }
+
+          test -n "$MS_CACHE_KEY" || {
+            echo "ERRO: MS_CACHE_KEY nao configurado."
+            exit 1
+          }
+
+      - name: Restaurar ultimo estado do Excel
+        uses: actions/cache/restore@v4
+        with:
+          path: .state/excel-state.json
+          key: excel-state-${{ github.run_id }}
+          restore-keys: |
+            excel-state-
+
+      - name: Verificar alteracao do Excel
+        id: verificar
+        env:
+          SB_FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 */6 * * *' }}
+          SB_STATE_CACHE_DIR: .state
+          SB_EXCEL_PATH: /Microsoft Copilot Chat Files/Copilot Notebook Uploads/Second Brain - Dados.xlsx
+        run: |
+          python -u VERIFICAR-ALTERACAO-EXCEL.py
+
+      - name: Salvar cache de autenticacao atualizado
+        if: always() && hashFiles('.auth/msal_cache.bin') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Salvar estado do Excel
+        if: always() && hashFiles('.state/excel-state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .state/excel-state.json
+          key: excel-state-${{ steps.verificar.outputs.etag-hash }}-${{ github.run_id }}
+
   sincronizar:
     name: Documentos, agenda, Outlook e To Do
+    needs: verificar-alteracao
+    if: needs.verificar-alteracao.outputs.executar == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    concurrency:
+      group: sincronizar-second-brain-outlook
+      cancel-in-progress: false
+
     steps:
+      - name: Registrar motivo da execucao
+        run: |
+          echo "Excel modificado em: ${{ needs.verificar-alteracao.outputs.modificado_em }}"
+          echo "ETag detectado: ${{ needs.verificar-alteracao.outputs.etag }}"
+          echo "Evento GitHub: ${{ github.event_name }}"
+          echo "Agendamento: ${{ github.event.schedule }}"
+
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
@@ -53,13 +157,17 @@ jobs:
         env:
           MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
         run: |
-          if [ -n "$MSAL_CACHE_B64" ]; then
+          if [ -n "${MSAL_CACHE_B64:-}" ]; then
             mkdir -p .auth
-            printf '%s' "$MSAL_CACHE_B64" | tr -d '\r\n ' | base64 --decode > .auth/msal_cache.bin
+            printf '%s' "$MSAL_CACHE_B64" \
+              | tr -d '\r\n ' \
+              | base64 --decode \
+              > .auth/msal_cache.bin
             chmod 600 .auth/msal_cache.bin
             echo "Cache renovado com Tasks.ReadWrite aplicado."
           else
-            echo "MSAL_CACHE_B64 nao configurado. Mantendo cache restaurado pelo GitHub Actions."
+            echo "MSAL_CACHE_B64 nao configurado."
+            echo "Mantendo o cache restaurado pelo GitHub Actions."
           fi
 
       - name: Verificar secrets
@@ -133,7 +241,6 @@ jobs:
 
       - name: Sincronizar Microsoft To Do
         env:
-          MS_CACHE_FILE: .auth/msal_cache.bin
           SB_TODO_TABLE: tbTodo
           SB_FORCE_LOGIN: "0"
           SB_RECREATE_MISSING: "0"
