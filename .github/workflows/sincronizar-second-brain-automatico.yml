@@ -1,16 +1,33 @@
-name: Sincronizar Second Brain automaticamente
+name: Sincronizar Second Brain com Outlook
 
 on:
   workflow_dispatch:
+
   schedule:
-    - cron: "0 */6 * * *"
+    # GitHub Actions usa UTC.
+    # Executa a cada 6 horas, no minuto 17.
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sincronizar-second-brain-outlook
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+  MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
 
 jobs:
   sincronizar:
+    name: Documentos, agenda, Outlook e To Do
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout do repositorio
+      - name: Baixar repositorio
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -21,57 +38,111 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install msal requests cryptography
+          python -m pip install msal requests cryptography
 
-      - name: Restaurar cache MSAL
+      - name: Restaurar cache de autenticacao
+        id: restaurar-cache-msal
+        uses: actions/cache/restore@v4
+        with:
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            msal-cache-
+
+      - name: Aplicar cache renovado com Tasks.ReadWrite
         env:
           MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
         run: |
-          echo "$MSAL_CACHE_B64" | base64 --decode > msal_cache.enc
+          if [ -n "$MSAL_CACHE_B64" ]; then
+            mkdir -p .auth
+            printf '%s' "$MSAL_CACHE_B64" | tr -d '\r\n ' | base64 --decode > .auth/msal_cache.bin
+            chmod 600 .auth/msal_cache.bin
+            echo "Cache renovado com Tasks.ReadWrite aplicado."
+          else
+            echo "MSAL_CACHE_B64 nao configurado. Mantendo cache restaurado pelo GitHub Actions."
+          fi
 
-      - name: Validar scripts
+      - name: Verificar secrets
         run: |
+          test -n "$MS_CLIENT_ID" || {
+            echo "ERRO: MS_CLIENT_ID nao configurado."
+            exit 1
+          }
+
+          test -n "$MS_CACHE_KEY" || {
+            echo "ERRO: MS_CACHE_KEY nao configurado."
+            exit 1
+          }
+
+          echo "Secrets encontrados."
+
+      - name: Verificar arquivos
+        run: |
+          test -f categorias_outlook.py || {
+            echo "ERRO: categorias_outlook.py nao encontrado."
+            exit 1
+          }
+
+          test -f SINCRONIZAR-DOCUMENTOS-AGENDA.py || {
+            echo "ERRO: SINCRONIZAR-DOCUMENTOS-AGENDA.py nao encontrado."
+            exit 1
+          }
+
+          test -f SINCRONIZAR-AGENDA.py || {
+            echo "ERRO: SINCRONIZAR-AGENDA.py nao encontrado."
+            exit 1
+          }
+
+          test -f SINCRONIZAR-TODO.py || {
+            echo "ERRO: SINCRONIZAR-TODO.py nao encontrado."
+            exit 1
+          }
+
+          echo "Todos os arquivos foram encontrados."
+
+      - name: Procurar caracteres invalidos
+        run: |
+          if grep -n '\\]' \
+            categorias_outlook.py \
+            SINCRONIZAR-DOCUMENTOS-AGENDA.py \
+            SINCRONIZAR-AGENDA.py \
+            SINCRONIZAR-TODO.py
+          then
+            echo "ERRO: encontrada barra invertida antes de colchete."
+            exit 1
+          fi
+
+          echo "Nenhum caractere invalido encontrado."
+
+      - name: Validar scripts Python
+        run: |
+          python -m py_compile categorias_outlook.py
           python -m py_compile SINCRONIZAR-DOCUMENTOS-AGENDA.py
           python -m py_compile SINCRONIZAR-AGENDA.py
           python -m py_compile SINCRONIZAR-TODO.py
 
+          echo "Todos os scripts passaram na validacao."
+
       - name: Sincronizar documentos com agenda
-        env:
-          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
         run: |
-          python SINCRONIZAR-DOCUMENTOS-AGENDA.py
+          python -u SINCRONIZAR-DOCUMENTOS-AGENDA.py
 
       - name: Sincronizar agenda com Outlook
-        env:
-          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
         run: |
-          python SINCRONIZAR-AGENDA.py
+          python -u SINCRONIZAR-AGENDA.py
 
       - name: Sincronizar Microsoft To Do
         env:
-          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
-          MS_CACHE_FILE: msal_cache.enc
+          MS_CACHE_FILE: .auth/msal_cache.bin
           SB_TODO_TABLE: tbTodo
           SB_FORCE_LOGIN: "0"
           SB_RECREATE_MISSING: "0"
         run: |
-          python SINCRONIZAR-TODO.py
+          python -u SINCRONIZAR-TODO.py
 
-      - name: Preparar cache MSAL atualizado
-        if: always()
-        run: |
-          if [ -f msal_cache.enc ]; then
-            base64 -w 0 msal_cache.enc > msal-cache-atualizado.b64
-          fi
-
-      - name: Salvar cache MSAL atualizado
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Salvar cache de autenticacao atualizado
+        if: always() && hashFiles('.auth/msal_cache.bin') != ''
+        uses: actions/cache/save@v4
         with:
-          name: msal-cache-atualizado
-          path: msal-cache-atualizado.b64
-          if-no-files-found: warn
-          retention-days: 1
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}-${{ github.run_attempt }}
