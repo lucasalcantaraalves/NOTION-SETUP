@@ -42,9 +42,7 @@ EXCEL_PATH = (
 )
 
 TABLE_NAME = "tbAgenda"
-
 OUTLOOK_TIME_ZONE = "E. South America Standard Time"
-
 CACHE_PATH = Path(".auth/msal_cache.bin")
 
 POLITICA_VENCIMENTO = (180, 90, 30, 7)
@@ -144,11 +142,10 @@ def graph_request(
     extra_headers=None,
     aceitar_404=False,
 ):
-    url = (
-        endpoint
-        if endpoint.startswith("https://")
-        else f"{GRAPH_BASE_URL}{endpoint}"
-    )
+    if endpoint.startswith("https://"):
+        url = endpoint
+    else:
+        url = f"{GRAPH_BASE_URL}{endpoint}"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -252,11 +249,11 @@ def salvar_cache(cache):
         exist_ok=True,
     )
 
+    serialized = cache.serialize().encode("utf-8")
+
     encrypted = Fernet(
         chave_fernet(CACHE_KEY_TEXT)
-    ).encrypt(
-        cache.serialize().encode("utf-8")
-    )
+    ).encrypt(serialized)
 
     CACHE_PATH.write_bytes(encrypted)
 
@@ -296,9 +293,7 @@ def autenticar():
         return result["access_token"]
 
     print("Autenticacao silenciosa indisponivel.")
-    print(
-        "Iniciando Device Code Flow como fallback..."
-    )
+    print("Iniciando Device Code Flow como fallback...")
 
     flow = app.initiate_device_flow(
         scopes=SCOPES
@@ -306,8 +301,7 @@ def autenticar():
 
     if "user_code" not in flow:
         falhar(
-            "Nao foi possivel iniciar "
-            "o Device Code Flow.",
+            "Nao foi possivel iniciar o Device Code Flow.",
             json.dumps(
                 flow,
                 indent=2,
@@ -328,8 +322,7 @@ def autenticar():
 
     if "access_token" not in result:
         falhar(
-            "Nao foi possivel obter "
-            "o token Microsoft.",
+            "Nao foi possivel obter o token Microsoft.",
             json.dumps(
                 result,
                 indent=2,
@@ -401,9 +394,7 @@ def categoria_da_area(area):
     if not chave:
         return None
 
-    return CATEGORIAS_AREA[chave][
-        "display_name"
-    ]
+    return CATEGORIAS_AREA[chave]["display_name"]
 
 
 def categorias_da_area(area):
@@ -452,11 +443,16 @@ def atualizar_categoria_outlook(
     categoria_id,
     color,
 ):
+    categoria_codificada = quote(
+        str(categoria_id),
+        safe="",
+    )
+
     return graph_request(
         "PATCH",
         (
             "/me/outlook/masterCategories/"
-            f"{quote(str(categoria_id), safe='')}"
+            f"{categoria_codificada}"
         ),
         token,
         json_body={
@@ -471,19 +467,14 @@ def garantir_categorias_outlook(token):
     print("CATEGORIAS DAS AREAS NO OUTLOOK")
     print("=" * 70)
 
-    existentes = listar_categorias_outlook(
-        token
-    )
+    existentes = listar_categorias_outlook(token)
 
     criadas = 0
     atualizadas = 0
     preservadas = 0
 
     for configuracao in CATEGORIAS_AREA.values():
-        display_name = configuracao[
-            "display_name"
-        ]
-
+        display_name = configuracao["display_name"]
         color = configuracao["color"]
 
         categoria_existente = existentes.get(
@@ -505,9 +496,7 @@ def garantir_categorias_outlook(token):
 
             continue
 
-        cor_atual = categoria_existente.get(
-            "color"
-        )
+        cor_atual = categoria_existente.get("color")
 
         if cor_atual == color:
             preservadas += 1
@@ -518,9 +507,7 @@ def garantir_categorias_outlook(token):
 
             continue
 
-        categoria_id = categoria_existente.get(
-            "id"
-        )
+        categoria_id = categoria_existente.get("id")
 
         if not categoria_id:
             print(
@@ -540,20 +527,13 @@ def garantir_categorias_outlook(token):
         atualizadas += 1
 
         print(
-            f"Cor da categoria atualizada: "
-            f"{display_name}"
+            f"Cor da categoria atualizada: {display_name}"
         )
 
     print()
-    print(
-        f"Categorias criadas: {criadas}"
-    )
-    print(
-        f"Categorias atualizadas: {atualizadas}"
-    )
-    print(
-        f"Categorias preservadas: {preservadas}"
-    )
+    print(f"Categorias criadas: {criadas}")
+    print(f"Categorias atualizadas: {atualizadas}")
+    print(f"Categorias preservadas: {preservadas}")
 
 
 # ============================================================
@@ -567,16 +547,11 @@ def localizar_excel(token):
     )
 
     print()
-    print(
-        "Localizando o Excel pelo caminho fixo..."
-    )
+    print("Localizando o Excel pelo caminho fixo...")
 
     arquivo = graph_request(
         "GET",
-        (
-            "/me/drive/root:"
-            f"{caminho_codificado}"
-        ),
+        f"/me/drive/root:{caminho_codificado}",
         token,
         params={
             "$select": (
@@ -620,8 +595,7 @@ def criar_sessao(token, item_id):
 
     if not session_id:
         falhar(
-            "O Graph nao retornou "
-            "o ID da sessao."
+            "O Graph nao retornou o ID da sessao."
         )
 
     print(
@@ -648,9 +622,7 @@ def fechar_sessao(
         },
     )
 
-    print(
-        "Sessao do workbook encerrada."
-    )
+    print("Sessao do workbook encerrada.")
 
 
 def obter_cabecalhos(
@@ -676,7 +648,8 @@ def obter_cabecalhos(
         [],
     )
 
-    if not values or not valuesfalhar(
+    if not values or not values[0\]:
+        falhar(
             f"A tabela {TABLE_NAME} "
             "nao retornou cabecalhos."
         )
@@ -717,9 +690,7 @@ def obter_linhas(
             resultado.get("value", [])
         )
 
-        endpoint = resultado.get(
-            "@odata.nextLink"
-        )
+        endpoint = resultado.get("@odata.nextLink")
 
     return acumulado
 
@@ -742,8 +713,7 @@ def obter_registros(colunas, rows):
                 if indice < len(valores)
                 else ""
             )
-            for indice, coluna
-            in enumerate(colunas)
+            for indice, coluna in enumerate(colunas)
         }
 
         possui_conteudo = any(
@@ -768,7 +738,7 @@ def obter_registros(colunas, rows):
 
 
 # ============================================================
-# FUNCOES DE CONVERSAO
+# CONVERSAO DE VALORES
 # ============================================================
 
 def excel_datetime(
@@ -821,9 +791,7 @@ def status_normalizado(registro):
 def usa_politica_vencimento(registro):
     politica = (
         str(
-            registro.get(
-                "Política de Aviso"
-            )
+            registro.get("Política de Aviso")
             or ""
         )
         .strip()
@@ -831,9 +799,7 @@ def usa_politica_vencimento(registro):
     )
 
     return (
-        valor_sim(
-            registro.get("Lembrete")
-        )
+        valor_sim(registro.get("Lembrete"))
         and politica == "180/90/30/7"
     )
 
@@ -851,8 +817,7 @@ def interpretar_ids(valor):
             if isinstance(dados, dict):
                 return {
                     str(chave): str(event_id)
-                    for chave, event_id
-                    in dados.items()
+                    for chave, event_id in dados.items()
                     if str(event_id).strip()
                 }
 
@@ -867,8 +832,7 @@ def interpretar_ids(valor):
 def serializar_ids(ids):
     ids_limpos = {
         str(chave): str(event_id)
-        for chave, event_id
-        in ids.items()
+        for chave, event_id in ids.items()
         if str(event_id).strip()
     }
 
@@ -923,9 +887,7 @@ def montar_recorrencia(
 
     recurrence_range = {
         "type": "noEnd",
-        "startDate": inicio.strftime(
-            "%Y-%m-%d"
-        ),
+        "startDate": inicio.strftime("%Y-%m-%d"),
     }
 
     if valor in {
@@ -1031,9 +993,7 @@ def corpo_evento(
             [
                 "",
                 str(
-                    registro.get(
-                        "Observações"
-                    )
+                    registro.get("Observações")
                 ),
             ]
         )
@@ -1060,9 +1020,7 @@ def montar_evento_normal(registro):
             0,
         )
 
-        fim = fim_inclusivo + timedelta(
-            days=1
-        )
+        fim = fim_inclusivo + timedelta(days=1)
 
     else:
         inicio = excel_datetime(
@@ -1082,9 +1040,7 @@ def montar_evento_normal(registro):
         )
 
         if fim <= inicio:
-            fim = inicio + timedelta(
-                hours=1
-            )
+            fim = inicio + timedelta(hours=1)
 
     identificador = str(
         registro.get("ID") or ""
@@ -1097,9 +1053,7 @@ def montar_evento_normal(registro):
         ),
         "body": {
             "contentType": "text",
-            "content": corpo_evento(
-                registro
-            ),
+            "content": corpo_evento(registro),
         },
         "start": {
             "dateTime": inicio.strftime(
@@ -1139,7 +1093,7 @@ def montar_evento_normal(registro):
     if recorrencia:
         evento["recurrence"] = recorrencia
 
-    if evento["isReminderOn"]:
+    if evento["isReminderOn"\]:
         evento[
             "reminderMinutesBeforeStart"
         ] = 30
@@ -1168,14 +1122,8 @@ def montar_evento_politica(
 
     if chave == "vencimento":
         data_evento = vencimento
-
-        assunto = (
-            f"⚫ VENCE HOJE · {nome}"
-        )
-
-        complemento = (
-            "Politica de aviso: vencimento."
-        )
+        assunto = f"⚫ VENCE HOJE · {nome}"
+        complemento = "Politica de aviso: vencimento."
 
     else:
         dias = int(chave)
@@ -1202,9 +1150,7 @@ def montar_evento_politica(
             f"{dias} dias antes do vencimento."
         )
 
-    fim = data_evento + timedelta(
-        days=1
-    )
+    fim = data_evento + timedelta(days=1)
 
     return {
         "subject": assunto,
@@ -1216,18 +1162,14 @@ def montar_evento_politica(
             ),
         },
         "start": {
-            "dateTime": (
-                data_evento.strftime(
-                    "%Y-%m-%dT00:00:00"
-                )
+            "dateTime": data_evento.strftime(
+                "%Y-%m-%dT00:00:00"
             ),
             "timeZone": OUTLOOK_TIME_ZONE,
         },
         "end": {
-            "dateTime": (
-                fim.strftime(
-                    "%Y-%m-%dT00:00:00"
-                )
+            "dateTime": fim.strftime(
+                "%Y-%m-%dT00:00:00"
             ),
             "timeZone": OUTLOOK_TIME_ZONE,
         },
@@ -1258,12 +1200,14 @@ def buscar_evento(
     token,
     event_id,
 ):
+    event_id_codificado = quote(
+        str(event_id),
+        safe="",
+    )
+
     return graph_request(
         "GET",
-        (
-            "/me/events/"
-            f"{quote(str(event_id), safe='')}"
-        ),
+        f"/me/events/{event_id_codificado}",
         token,
         params={
             "$select": (
@@ -1298,21 +1242,23 @@ def atualizar_evento_payload(
     event_id,
     payload,
 ):
-    payload = dict(payload)
+    payload_atualizacao = dict(payload)
 
-    payload.pop(
+    payload_atualizacao.pop(
         "transactionId",
         None,
     )
 
+    event_id_codificado = quote(
+        str(event_id),
+        safe="",
+    )
+
     return graph_request(
         "PATCH",
-        (
-            "/me/events/"
-            f"{quote(str(event_id), safe='')}"
-        ),
+        f"/me/events/{event_id_codificado}",
         token,
-        json_body=payload,
+        json_body=payload_atualizacao,
     )
 
 
@@ -1320,12 +1266,14 @@ def excluir_evento(
     token,
     event_id,
 ):
+    event_id_codificado = quote(
+        str(event_id),
+        safe="",
+    )
+
     return graph_request(
         "DELETE",
-        (
-            "/me/events/"
-            f"{quote(str(event_id), safe='')}"
-        ),
+        f"/me/events/{event_id_codificado}",
         token,
         aceitar_404=True,
     )
@@ -1404,7 +1352,6 @@ def processar_remocao(
         )
 
         resumo["ignorados"] += 1
-
         return
 
     excluidos = 0
@@ -1447,9 +1394,7 @@ def processar_remocao(
 
     resumo["excluidos"] += excluidos
 
-    print(
-        "Outlook Event ID limpo no Excel."
-    )
+    print("Outlook Event ID limpo no Excel.")
 
 
 def processar_evento_normal(
@@ -1880,7 +1825,7 @@ def sincronizar(
         f"Erros: {resumo['erros']}"
     )
 
-    if resumo["erros"]:
+    if resumo["erros"\]:
         raise RuntimeError(
             "Uma ou mais linhas falharam. "
             "Veja os logs acima."
