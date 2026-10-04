@@ -1,13 +1,4 @@
-"""
-Categorias visuais das Areas do Second Brain no Outlook.
-
-Este modulo:
-- identifica a Area de um registro;
-- retorna a categoria correspondente;
-- cria as categorias ausentes no Outlook;
-- preserva as categorias que ja estiverem corretas;
-- atualiza a cor quando necessario.
-"""
+"""Categorias visuais das Areas do Second Brain no Outlook."""
 
 from __future__ import annotations
 
@@ -60,12 +51,6 @@ CATEGORIAS_AREA = {
 
 
 def normalizar_texto(valor: object) -> str:
-    """
-    Normaliza o texto para facilitar a identificacao da Area.
-
-    Remove acentos, converte para minusculas e normaliza espacos.
-    """
-
     texto = unicodedata.normalize(
         "NFKD",
         str(valor or ""),
@@ -83,15 +68,6 @@ def normalizar_texto(valor: object) -> str:
 
 
 def chave_da_area(area: object) -> str | None:
-    """
-    Identifica a chave interna correspondente a Area recebida.
-
-    Exemplos:
-    ♀ Netzach
-    Netzach
-    ♀ Netzach · Relacionamentos & Vinculos
-    """
-
     texto = normalizar_texto(area)
 
     for chave in CATEGORIAS_AREA:
@@ -102,10 +78,6 @@ def chave_da_area(area: object) -> str | None:
 
 
 def categoria_da_area(area: object) -> str | None:
-    """
-    Retorna o nome da categoria correspondente a Area.
-    """
-
     chave = chave_da_area(area)
 
     if not chave:
@@ -114,11 +86,7 @@ def categoria_da_area(area: object) -> str | None:
     return CATEGORIAS_AREA[chave]["display_name"]
 
 
-def categorias_da_area(area: object) -> list"""
-    Retorna a lista de categorias que deve ser aplicada
-    ao evento do Outlook.
-    """
-
+def categorias_da_area(area: object) -> list[str\]:
     categoria = categoria_da_area(area)
 
     if not categoria:
@@ -127,11 +95,9 @@ def categorias_da_area(area: object) -> list"""
     return [categoria]
 
 
-def headers_graph(access_token: str) -> dict[str, str]:
-    """
-    Monta os cabecalhos utilizados nas chamadas ao Microsoft Graph.
-    """
-
+def headers_graph(
+    access_token: str,
+) -> dict[str, str\]:
     return {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json",
@@ -142,11 +108,7 @@ def headers_graph(access_token: str) -> dict[str, str]:
 def listar_categorias(
     access_token: str,
     timeout: int = REQUEST_TIMEOUT,
-) -> dict[str, dict]:
-    """
-    Lista as categorias existentes no Outlook.
-    """
-
+) -> dict[str, dict\]:
     response = requests.get(
         f"{GRAPH_BASE_URL}/me/outlook/masterCategories",
         headers=headers_graph(access_token),
@@ -173,10 +135,6 @@ def criar_categoria(
     color: str,
     timeout: int = REQUEST_TIMEOUT,
 ) -> dict:
-    """
-    Cria uma categoria no Outlook.
-    """
-
     response = requests.post(
         f"{GRAPH_BASE_URL}/me/outlook/masterCategories",
         headers=headers_graph(access_token),
@@ -201,10 +159,6 @@ def atualizar_cor_categoria(
     color: str,
     timeout: int = REQUEST_TIMEOUT,
 ) -> dict:
-    """
-    Atualiza a cor de uma categoria existente.
-    """
-
     categoria_id_codificado = quote(
         str(categoria_id),
         safe="",
@@ -234,22 +188,14 @@ def garantir_categorias(
     access_token: str,
     timeout: int = REQUEST_TIMEOUT,
 ) -> None:
-    """
-    Garante que as categorias das oito Areas existam no Outlook.
-
-    Categorias ausentes sao criadas.
-    Categorias existentes com a cor correta sao preservadas.
-    Categorias existentes com outra cor sao atualizadas.
-    """
-
     print()
     print("=" * 70)
     print("CATEGORIAS DAS AREAS NO OUTLOOK")
     print("=" * 70)
 
-    categorias_existentes = listar_categorias(
-        access_token=access_token,
-        timeout=timeout,
+    existentes = listar_categorias(
+        access_token,
+        timeout,
     )
 
     criadas = 0
@@ -257,66 +203,58 @@ def garantir_categorias(
     preservadas = 0
 
     for configuracao in CATEGORIAS_AREA.values():
-        display_name = configuracao["display_name"]
-        color = configuracao["color"]
+        nome = configuracao["display_name"]
+        cor = configuracao["color"]
 
-        categoria_existente = categorias_existentes.get(
-            display_name
-        )
+        atual = existentes.get(nome)
 
-        if not categoria_existente:
+        if not atual:
             criar_categoria(
-                access_token=access_token,
-                display_name=display_name,
-                color=color,
-                timeout=timeout,
+                access_token,
+                nome,
+                cor,
+                timeout,
             )
 
             criadas += 1
 
             print(
-                f"Categoria criada: {display_name}"
+                f"Categoria criada: {nome}"
             )
 
             continue
 
-        cor_atual = categoria_existente.get(
-            "color"
-        )
-
-        if cor_atual == color:
+        if atual.get("color") == cor:
             preservadas += 1
 
             print(
-                f"Categoria preservada: {display_name}"
+                f"Categoria preservada: {nome}"
             )
 
             continue
 
-        categoria_id = categoria_existente.get(
-            "id"
-        )
+        categoria_id = atual.get("id")
 
         if not categoria_id:
             print(
                 "Categoria encontrada sem ID. "
                 "Nao foi possivel atualizar a cor: "
-                f"{display_name}"
+                f"{nome}"
             )
 
             continue
 
         atualizar_cor_categoria(
-            access_token=access_token,
-            categoria_id=categoria_id,
-            color=color,
-            timeout=timeout,
+            access_token,
+            categoria_id,
+            cor,
+            timeout,
         )
 
         atualizadas += 1
 
         print(
-            f"Cor da categoria atualizada: {display_name}"
+            f"Cor da categoria atualizada: {nome}"
         )
 
     print()
