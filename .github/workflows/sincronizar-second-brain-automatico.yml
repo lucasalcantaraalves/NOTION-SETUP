@@ -5,28 +5,12 @@ on:
   schedule:
     - cron: "0 */6 * * *"
 
-permissions:
-  contents: read
-
-concurrency:
-  group: sincronizar-second-brain
-  cancel-in-progress: false
-
 jobs:
   sincronizar:
-    name: Sincronizar documentos, agenda e To Do
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-      MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
-      MS_CACHE_FILE: .msal_cache.enc
-      SB_TIME_ZONE: America/New_York
-      SB_FORCE_LOGIN: "0"
 
     steps:
-      - name: Baixar repositorio
+      - name: Checkout do repositorio
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -35,122 +19,59 @@ jobs:
           python-version: "3.12"
 
       - name: Instalar dependencias
-        shell: bash
         run: |
-          set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install msal requests cryptography
-
-      - name: Validar secrets obrigatorios
-        shell: bash
-        env:
-          MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
-        run: |
-          set -euo pipefail
-
-          for nome in MS_CLIENT_ID MS_CACHE_KEY MSAL_CACHE_B64; do
-            if [ -z "${!nome:-}" ]; then
-              echo "::error::O secret $nome nao esta configurado ou esta vazio."
-              exit 1
-            fi
-          done
-
-          echo "Secrets obrigatorios encontrados."
+          pip install msal requests cryptography
 
       - name: Restaurar cache MSAL
-        shell: bash
         env:
           MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
         run: |
-          set -euo pipefail
+          echo "$MSAL_CACHE_B64" | base64 --decode > msal_cache.enc
 
-          printf '%s' "$MSAL_CACHE_B64" \
-            | tr -d '\r\n ' \
-            | base64 --decode \
-            > "$MS_CACHE_FILE"
-
-          chmod 600 "$MS_CACHE_FILE"
-
-          if [ ! -s "$MS_CACHE_FILE" ]; then
-            echo "::error::O cache MSAL restaurado esta vazio."
-            exit 1
-          fi
-
-          echo "Cache MSAL restaurado com sucesso."
-
-      - name: Confirmar arquivos necessarios
-        shell: bash
+      - name: Validar scripts
         run: |
-          set -euo pipefail
+          python -m py_compile SINCRONIZAR-DOCUMENTOS-AGENDA.py
+          python -m py_compile SINCRONIZAR-AGENDA.py
+          python -m py_compile SINCRONIZAR-TODO.py
 
-          arquivos=(
-            "SINCRONIZAR-DOCUMENTOS-AGENDA.py"
-            "SINCRONIZAR-AGENDA.py"
-            "SINCRONIZAR-TODO.py"
-          )
-
-          for arquivo in "${arquivos[@]}"; do
-            if [ ! -f "$arquivo" ]; then
-              echo "::error::Arquivo nao encontrado na raiz do repositorio: $arquivo"
-              exit 1
-            fi
-          done
-
-          echo "Todos os scripts necessarios estao presentes."
-
-      - name: Validar sintaxe dos scripts
-        shell: bash
+      - name: Sincronizar documentos com agenda
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
         run: |
-          set -euo pipefail
-          python -m py_compile \
-            SINCRONIZAR-DOCUMENTOS-AGENDA.py \
-            SINCRONIZAR-AGENDA.py \
-            SINCRONIZAR-TODO.py
-          echo "Sintaxe Python validada."
-
-      - name: Sincronizar documentos com a agenda
-        shell: bash
-        run: |
-          set -euo pipefail
           python SINCRONIZAR-DOCUMENTOS-AGENDA.py
 
-      - name: Sincronizar agenda com o Outlook
-        shell: bash
+      - name: Sincronizar agenda com Outlook
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
         run: |
-          set -euo pipefail
           python SINCRONIZAR-AGENDA.py
 
       - name: Sincronizar Microsoft To Do
-        shell: bash
         env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
+          MS_CACHE_FILE: msal_cache.enc
           SB_TODO_TABLE: tbTodo
+          SB_FORCE_LOGIN: "0"
           SB_RECREATE_MISSING: "0"
         run: |
-          set -euo pipefail
           python SINCRONIZAR-TODO.py
 
-      - name: Verificar cache ao final
+      - name: Preparar cache MSAL atualizado
         if: always()
-        shell: bash
         run: |
-          set -euo pipefail
-
-          if [ ! -s "$MS_CACHE_FILE" ]; then
-            echo "::error::O cache MSAL nao foi encontrado ao final da execucao."
-            exit 1
+          if [ -f msal_cache.enc ]; then
+            base64 -w 0 msal_cache.enc > msal-cache-atualizado.b64
           fi
 
-          cp "$MS_CACHE_FILE" msal-cache-atualizado.enc
-          base64 -w 0 "$MS_CACHE_FILE" > msal-cache-atualizado.b64
-          echo "Cache atualizado preparado para armazenamento temporario."
-
-      - name: Publicar cache atualizado
+      - name: Salvar cache MSAL atualizado
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: msal-cache-atualizado-${{ github.run_id }}
-          path: |
-            msal-cache-atualizado.enc
-            msal-cache-atualizado.b64
-          if-no-files-found: error
+          name: msal-cache-atualizado
+          path: msal-cache-atualizado.b64
+          if-no-files-found: warn
           retention-days: 1
