@@ -1,29 +1,30 @@
-name: Sincronizar Second Brain
+name: Sincronizar Second Brain com Outlook
 
 on:
   workflow_dispatch:
 
   schedule:
-    # O GitHub Actions interpreta o cron em UTC.
-    # Executa a sincronização a cada 15 minutos.
-    - cron: "*/15 * * * *"
+    # O GitHub Actions usa UTC.
+    # Executa a cada 6 horas, no minuto 17.
+    - cron: "17 */6 * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: sincronizar-second-brain
+  group: sincronizar-second-brain-outlook
   cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+  MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
 
 jobs:
   sincronizar:
+    name: Documentos, agenda e Outlook
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
-    env:
-      PYTHONUNBUFFERED: "1"
-      MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-      MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
 
     steps:
       - name: Baixar repositorio
@@ -33,6 +34,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Instalar dependencias
         run: |
@@ -40,36 +42,79 @@ jobs:
           python -m pip install msal requests cryptography
 
       - name: Restaurar cache de autenticacao
+        id: restaurar-cache-msal
         uses: actions/cache/restore@v4
         with:
-          path: .auth
-          key: msal-auth-${{ runner.os }}-${{ github.run_id }}
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            msal-auth-${{ runner.os }}-
-            msal-cache-${{ runner.os }}-
-            msal-
+            msal-cache-
 
-      - name: Verificar arquivos da automacao
+      - name: Verificar secrets
         run: |
-          test -f categorias_outlook.py
-          test -f SINCRONIZAR-DOCUMENTOS-AGENDA.py
-          test -f SINCRONIZAR-AGENDA.py
+          test -n "$MS_CLIENT_ID" || {
+            echo "ERRO: MS_CLIENT_ID nao configurado."
+            exit 1
+          }
 
+          test -n "$MS_CACHE_KEY" || {
+            echo "ERRO: MS_CACHE_KEY nao configurado."
+            exit 1
+          }
+
+          echo "Secrets encontrados."
+
+      - name: Verificar arquivos
+        run: |
+          test -f categorias_outlook.py || {
+            echo "ERRO: categorias_outlook.py nao encontrado."
+            exit 1
+          }
+
+          test -f SINCRONIZAR-DOCUMENTOS-AGENDA.py || {
+            echo "ERRO: SINCRONIZAR-DOCUMENTOS-AGENDA.py nao encontrado."
+            exit 1
+          }
+
+          test -f SINCRONIZAR-AGENDA.py || {
+            echo "ERRO: SINCRONIZAR-AGENDA.py nao encontrado."
+            exit 1
+          }
+
+          echo "Todos os arquivos foram encontrados."
+
+      - name: Procurar caracteres invalidos
+        run: |
+          if grep -n '\\]' \
+            categorias_outlook.py \
+            SINCRONIZAR-DOCUMENTOS-AGENDA.py \
+            SINCRONIZAR-AGENDA.py
+          then
+            echo "ERRO: encontrada barra invertida antes de colchete."
+            exit 1
+          fi
+
+          echo "Nenhum caractere invalido encontrado."
+
+      - name: Validar scripts Python
+        run: |
           python -m py_compile categorias_outlook.py
           python -m py_compile SINCRONIZAR-DOCUMENTOS-AGENDA.py
           python -m py_compile SINCRONIZAR-AGENDA.py
 
-      - name: Sincronizar documentos com a agenda
+          echo "Todos os scripts passaram na validacao."
+
+      - name: Sincronizar documentos com agenda
         run: |
           python -u SINCRONIZAR-DOCUMENTOS-AGENDA.py
 
-      - name: Sincronizar agenda com Outlook e categorias
+      - name: Sincronizar agenda com Outlook
         run: |
           python -u SINCRONIZAR-AGENDA.py
 
-      - name: Salvar cache de autenticacao
+      - name: Salvar cache de autenticacao atualizado
         if: always() && hashFiles('.auth/msal_cache.bin') != ''
         uses: actions/cache/save@v4
         with:
-          path: .auth
-          key: msal-auth-${{ runner.os }}-${{ github.run_id }}
+          path: .auth/msal_cache.bin
+          key: msal-cache-${{ github.run_id }}-${{ github.run_attempt }}
