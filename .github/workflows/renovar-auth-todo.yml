@@ -1,0 +1,70 @@
+name: Renovar autenticacao Microsoft To Do
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renovar-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: python -m pip install --upgrade msal requests cryptography
+
+      - name: Restaurar cache MSAL atual, se existir
+        env:
+          MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
+        run: |
+          if [ -n "$MSAL_CACHE_B64" ]; then
+            printf '%s' "$MSAL_CACHE_B64" | base64 --decode > .msal_cache.enc
+            chmod 600 .msal_cache.enc
+            echo "Cache existente restaurado."
+          else
+            echo "MSAL_CACHE_B64 nao encontrado. Um novo cache sera criado."
+          fi
+
+      - name: Validar script SINCRONIZAR-TODO.py
+        run: python -m py_compile SINCRONIZAR-TODO.py
+
+      - name: Renovar consentimento e cache
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
+          MS_CACHE_FILE: .msal_cache.enc
+          SB_FORCE_LOGIN: '1'
+        run: |
+          python SINCRONIZAR-TODO.py
+
+      - name: Preparar cache renovado para download
+        if: always()
+        run: |
+          if [ -f .msal_cache.enc ]; then
+            cp .msal_cache.enc msal-cache-renovado.enc
+            base64 -w 0 .msal_cache.enc > msal-cache-renovado.b64
+          else
+            echo "Cache nao foi criado."
+            exit 1
+          fi
+
+      - name: Publicar cache renovado como artifact privado da execucao
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msal-cache-renovado
+          path: |
+            msal-cache-renovado.enc
+            msal-cache-renovado.b64
+          if-no-files-found: error
+          retention-days: 1
