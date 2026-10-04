@@ -1,5 +1,6 @@
 """Categorias das Areas do Second Brain no Outlook."""
 
+import json
 import unicodedata
 from urllib.parse import quote
 
@@ -47,6 +48,31 @@ CATEGORIAS_AREA = {
 }
 
 
+class CategoriaOutlookError(RuntimeError):
+    def __init__(
+        self,
+        status_code,
+        method,
+        url,
+        response_text,
+    ):
+        self.status_code = status_code
+        self.method = method
+        self.url = url
+        self.response_text = response_text
+
+        mensagem = (
+            "Microsoft Graph retornou erro ao processar "
+            "uma categoria do Outlook.\n"
+            f"HTTP: {status_code}\n"
+            f"Metodo: {method}\n"
+            f"URL: {url}\n"
+            f"Resposta: {response_text}"
+        )
+
+        super().__init__(mensagem)
+
+
 def normalizar_texto(valor):
     texto = unicodedata.normalize(
         "NFKD",
@@ -60,7 +86,7 @@ def normalizar_texto(valor):
     )
 
     return " ".join(
-        texto.lower().strip().split()
+        texto.casefold().strip().split()
     )
 
 
@@ -100,28 +126,121 @@ def headers_graph(access_token):
     }
 
 
+def conteudo_resposta(response):
+    try:
+        return json.dumps(
+            response.json(),
+            indent=2,
+            ensure_ascii=False,
+        )
+    except ValueError:
+        return response.text or "(resposta vazia)"
+
+
+def validar_resposta(response):
+    if response.ok:
+        return
+
+    raise CategoriaOutlookError(
+        status_code=response.status_code,
+        method=response.request.method,
+        url=response.url,
+        response_text=conteudo_resposta(response),
+    )
+
+
+def requisicao_graph(
+    method,
+    url,
+    access_token,
+    json_body=None,
+    timeout=REQUEST_TIMEOUT,
+):
+    response = requests.request(
+        method=method,
+        url=url,
+        headers=headers_graph(access_token),
+        json=json_body,
+        timeout=timeout,
+    )
+
+    validar_resposta(response)
+
+    if response.status_code == 204:
+        return None
+
+    if not response.content:
+        return None
+
+    return response.json()
+
+
 def listar_categorias(
     access_token,
     timeout=REQUEST_TIMEOUT,
 ):
-    response = requests.get(
-        f"{GRAPH_BASE_URL}/me/outlook/masterCategories",
-        headers=headers_graph(access_token),
-        timeout=timeout,
+    url = (
+        f"{GRAPH_BASE_URL}/me/outlook/masterCategories"
+        "?$top=100"
     )
 
-    response.raise_for_status()
+    categorias = []
 
-    categorias = response.json().get(
-        "value",
-        [],
-    )
+    while url:
+        resultado = requisicao_graph(
+            method="GET",
+            url=url,
+            access_token=access_token,
+            timeout=timeout,
+        )
+
+        if not resultado:
+            break
+
+        categorias.extend(
+            resultado.get("value", [])
+        )
+
+        url = resultado.get("@odata.nextLink")
+
+    por_nome_exato = {}
+    por_nome_normalizado = {}
+
+    for categoria in categorias:
+        display_name = categoria.get("displayName")
+
+        if not display_name:
+            continue
+
+        por_nome_exato[display_name] = categoria
+
+        por_nome_normalizado[
+            normalizar_texto(display_name)
+        ] = categoria
 
     return {
-        categoria.get("displayName"): categoria
-        for categoria in categorias
-        if categoria.get("displayName")
+        "lista": categorias,
+        "por_nome_exato": por_nome_exato,
+        "por_nome_normalizado": por_nome_normalizado,
     }
+
+
+def localizar_categoria(
+    categorias,
+    display_name,
+):
+    categoria = categorias[
+        "por_nome_exato"
+    ].get(display_name)
+
+    if categoria:
+        return categoria
+
+    return categorias[
+        "por_nome_normalizado"
+    ].get(
+        normalizar_texto(display_name)
+    )
 
 
 def criar_categoria(
@@ -130,22 +249,19 @@ def criar_categoria(
     color,
     timeout=REQUEST_TIMEOUT,
 ):
-    response = requests.post(
-        f"{GRAPH_BASE_URL}/me/outlook/masterCategories",
-        headers=headers_graph(access_token),
-        json={
+    return requisicao_graph(
+        method="POST",
+        url=(
+            f"{GRAPH_BASE_URL}"
+            "/me/outlook/masterCategories"
+        ),
+        access_token=access_token,
+        json_body={
             "displayName": display_name,
             "color": color,
         },
         timeout=timeout,
     )
-
-    response.raise_for_status()
-
-    if not response.content:
-        return {}
-
-    return response.json()
 
 
 def atualizar_cor_categoria(
@@ -159,24 +275,64 @@ def atualizar_cor_categoria(
         safe="",
     )
 
-    response = requests.patch(
-        (
-            f"{GRAPH_BASE_URL}/me/outlook/"
-            f"masterCategories/{categoria_id_codificado}"
+    return requisicao_graph(
+        method="PATCH",
+        url=(
+            f"{GRAPH_BASE_URL}"
+            "/me/outlook/masterCategories/"
+            f"{categoria_id_codificado}"
         ),
-        headers=headers_graph(access_token),
-        json={
+        access_token=access_token,
+        json_body={
             "color": color,
         },
         timeout=timeout,
     )
 
-    response.raise_for_status()
 
-    if not response.content:
-        return {}
+def criar_categoria_com_recuperacao(
+    access_token,
+    display_name,
+    color,
+    timeout,
+):
+    try:
+        return criar_categoria(
+            access_token=access_token,
+            display_name=display_name,
+            color=color,
+            timeout=timeout,
+        )
 
-    return response.json()
+    except CategoriaOutlookError as error:
+        if error.status_code != 400:
+            raise
+
+        print(
+            "O Graph rejeitou a criacao. "
+            "Verificando se a categoria ja existe..."
+        )
+
+        categorias_atualizadas = listar_categorias(
+            access_token=access_token,
+            timeout=timeout,
+        )
+
+        categoria_existente = localizar_categoria(
+            categorias_atualizadas,
+            display_name,
+        )
+
+        if categoria_existente:
+            print(
+                "Categoria localizada depois "
+                "da nova consulta: "
+                f"{display_name}"
+            )
+
+            return categoria_existente
+
+        raise
 
 
 def garantir_categorias(
@@ -188,37 +344,66 @@ def garantir_categorias(
     print("CATEGORIAS DAS AREAS NO OUTLOOK")
     print("=" * 70)
 
-    existentes = listar_categorias(
-        access_token,
-        timeout,
+    categorias = listar_categorias(
+        access_token=access_token,
+        timeout=timeout,
+    )
+
+    print(
+        "Categorias encontradas antes "
+        f"da sincronizacao: {len(categorias['lista'])}"
     )
 
     criadas = 0
     atualizadas = 0
     preservadas = 0
+    avisos = 0
 
     for configuracao in CATEGORIAS_AREA.values():
         nome = configuracao["display_name"]
         cor = configuracao["color"]
-        atual = existentes.get(nome)
+
+        print()
+        print(f"Processando categoria: {nome}")
+        print(f"Cor desejada: {cor}")
+
+        atual = localizar_categoria(
+            categorias,
+            nome,
+        )
 
         if not atual:
-            criar_categoria(
-                access_token,
-                nome,
-                cor,
-                timeout,
+            atual = criar_categoria_com_recuperacao(
+                access_token=access_token,
+                display_name=nome,
+                color=cor,
+                timeout=timeout,
             )
 
-            criadas += 1
+            if atual:
+                criadas += 1
 
-            print(
-                f"Categoria criada: {nome}"
+                print(
+                    f"Categoria criada ou recuperada: {nome}"
+                )
+            else:
+                avisos += 1
+
+                print(
+                    "AVISO: o Graph nao retornou "
+                    f"a categoria criada: {nome}"
+                )
+
+            categorias = listar_categorias(
+                access_token=access_token,
+                timeout=timeout,
             )
 
             continue
 
-        if atual.get("color") == cor:
+        cor_atual = atual.get("color")
+
+        if cor_atual == cor:
             preservadas += 1
 
             print(
@@ -230,28 +415,35 @@ def garantir_categorias(
         categoria_id = atual.get("id")
 
         if not categoria_id:
+            avisos += 1
+
             print(
-                "Categoria encontrada sem ID. "
-                "Nao foi possivel atualizar a cor: "
+                "AVISO: categoria encontrada "
+                "sem ID. Cor nao atualizada: "
                 f"{nome}"
             )
 
             continue
 
         atualizar_cor_categoria(
-            access_token,
-            categoria_id,
-            cor,
-            timeout,
+            access_token=access_token,
+            categoria_id=categoria_id,
+            color=cor,
+            timeout=timeout,
         )
 
         atualizadas += 1
 
         print(
-            f"Cor da categoria atualizada: {nome}"
+            "Cor da categoria atualizada: "
+            f"{nome} | {cor_atual} -> {cor}"
         )
 
     print()
-    print(f"Categorias criadas: {criadas}")
+    print("=" * 70)
+    print("RESUMO DAS CATEGORIAS")
+    print("=" * 70)
+    print(f"Categorias criadas/recuperadas: {criadas}")
     print(f"Categorias atualizadas: {atualizadas}")
     print(f"Categorias preservadas: {preservadas}")
+    print(f"Avisos: {avisos}")
