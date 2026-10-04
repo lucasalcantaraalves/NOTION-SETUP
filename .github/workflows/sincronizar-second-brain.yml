@@ -3,6 +3,11 @@ name: Sincronizar Second Brain
 on:
   workflow_dispatch:
 
+  schedule:
+    # O GitHub Actions interpreta o cron em UTC.
+    # Executa a sincronização a cada 15 minutos.
+    - cron: "*/15 * * * *"
+
 permissions:
   contents: read
 
@@ -46,16 +51,21 @@ jobs:
 
       - name: Verificar arquivos da automacao
         run: |
+          test -f categorias_outlook.py
           test -f SINCRONIZAR-DOCUMENTOS-AGENDA.py
           test -f SINCRONIZAR-AGENDA.py
+
+          python -m py_compile categorias_outlook.py
           python -m py_compile SINCRONIZAR-DOCUMENTOS-AGENDA.py
           python -m py_compile SINCRONIZAR-AGENDA.py
 
       - name: Sincronizar documentos com a agenda
-        run: python -u SINCRONIZAR-DOCUMENTOS-AGENDA.py
+        run: |
+          python -u SINCRONIZAR-DOCUMENTOS-AGENDA.py
 
-      - name: Sincronizar agenda com o Outlook
-        run: python -u SINCRONIZAR-AGENDA.py
+      - name: Sincronizar agenda com Outlook e categorias
+        run: |
+          python -u SINCRONIZAR-AGENDA.py
 
       - name: Salvar cache de autenticacao
         if: always() && hashFiles('.auth/msal_cache.bin') != ''
