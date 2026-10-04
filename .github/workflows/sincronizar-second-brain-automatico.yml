@@ -1,4 +1,4 @@
-name: Sincronizar Second Brain com Outlook
+name: Sincronizar Second Brain Auto Outlook e To-do
 
 on:
   workflow_dispatch:
