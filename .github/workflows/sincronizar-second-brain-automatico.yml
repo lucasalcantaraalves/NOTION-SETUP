@@ -1,0 +1,159 @@
+name: Sincronizar Second Brain automaticamente
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: '0 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sincronizar-second-brain
+  cancel-in-progress: false
+
+jobs:
+  sincronizar:
+    name: Sincronizar documentos, agenda e To Do
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+      MS_CACHE_KEY: ${{ secrets.MS_CACHE_KEY }}
+      MS_CACHE_FILE: .msal_cache.enc
+      SB_TIME_ZONE: America/New_York
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install msal requests cryptography
+
+      - name: Validar secrets obrigatórios
+        env:
+          MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${MS_CLIENT_ID:-}" ]; then
+            echo "::error::O secret MS_CLIENT_ID não está configurado."
+            exit 1
+          fi
+
+          if [ -z "${MS_CACHE_KEY:-}" ]; then
+            echo "::error::O secret MS_CACHE_KEY não está configurado."
+            exit 1
+          fi
+
+          if [ -z "${MSAL_CACHE_B64:-}" ]; then
+            echo "::error::O secret MSAL_CACHE_B64 não está configurado."
+            exit 1
+          fi
+
+          echo "Secrets obrigatórios encontrados."
+
+      - name: Restaurar cache MSAL
+        env:
+          MSAL_CACHE_B64: ${{ secrets.MSAL_CACHE_B64 }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$MSAL_CACHE_B64" \
+            | tr -d '\r\n ' \
+            | base64 --decode \
+            > "$MS_CACHE_FILE"
+
+          chmod 600 "$MS_CACHE_FILE"
+
+          if [ ! -s "$MS_CACHE_FILE" ]; then
+            echo "::error::O cache MSAL restaurado está vazio."
+            exit 1
+          fi
+
+          echo "Cache MSAL restaurado com sucesso."
+
+      - name: Confirmar arquivos necessários
+        run: |
+          set -euo pipefail
+
+          arquivos=(
+            "SINCRONIZAR-DOCUMENTOS-AGENDA.py"
+            "SINCRONIZAR-AGENDA.py"
+            "SINCRONIZAR-TODO.py"
+          )
+
+          for arquivo in "${arquivos[@]}"; do
+            if [ ! -f "$arquivo" ]; then
+              echo "::error::Arquivo não encontrado: $arquivo"
+              exit 1
+            fi
+          done
+
+          echo "Todos os scripts necessários estão presentes."
+
+      - name: Validar sintaxe dos scripts
+        run: |
+          set -euo pipefail
+
+          python -m py_compile \
+            SINCRONIZAR-DOCUMENTOS-AGENDA.py \
+            SINCRONIZAR-AGENDA.py \
+            SINCRONIZAR-TODO.py
+
+          echo "Sintaxe dos scripts validada."
+
+      - name: Sincronizar documentos com a agenda
+        run: |
+          set -euo pipefail
+          python SINCRONIZAR-DOCUMENTOS-AGENDA.py
+
+      - name: Sincronizar agenda com o Outlook
+        run: |
+          set -euo pipefail
+          python SINCRONIZAR-AGENDA.py
+
+      - name: Sincronizar To Do
+        env:
+          SB_TODO_TABLE: tbTodo
+          SB_FORCE_LOGIN: '0'
+          SB_RECREATE_MISSING: '0'
+        run: |
+          set -euo pipefail
+          python SINCRONIZAR-TODO.py
+
+      - name: Preparar cache atualizado
+        if: always()
+        run: |
+          set -euo pipefail
+
+          if [ ! -s "$MS_CACHE_FILE" ]; then
+            echo "::error::O cache MSAL atualizado não foi encontrado."
+            exit 1
+          fi
+
+          cp "$MS_CACHE_FILE" msal-cache-atualizado.enc
+          base64 -w 0 "$MS_CACHE_FILE" > msal-cache-atualizado.b64
+
+          echo "Cache atualizado preparado."
+
+      - name: Publicar cache atualizado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msal-cache-atualizado-${{ github.run_id }}
+          path: |
+            msal-cache-atualizado.enc
+            msal-cache-atualizado.b64
+          if-no-files-found: error
+          retention-days: 1
