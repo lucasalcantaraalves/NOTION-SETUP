@@ -414,8 +414,46 @@ def buscar_evento(token, event_id):
     return graph_request("GET", f"/me/events/{quote(str(event_id), safe='')}", token, params={"$select": "id,subject,start,end,isAllDay,recurrence,isReminderOn,categories"}, aceitar_404=True)
 
 
+def extrair_evento_existente_de_erro(error):
+    if error.status_code != 400 or not error.response_text:
+        return None
+    try:
+        resposta = json.loads(error.response_text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    dados_erro = resposta.get("error") or {}
+    if dados_erro.get("code") != "ErrorDuplicateTransactionId":
+        return None
+    event_id = dados_erro.get("@event.existingEventId")
+    return str(event_id).strip() if event_id else None
+
+
 def criar_evento_payload(token, payload):
-    return graph_request("POST", "/me/events", token, json_body=payload)
+    try:
+        return graph_request("POST", "/me/events", token, json_body=payload)
+    except GraphError as error:
+        event_id = extrair_evento_existente_de_erro(error)
+        if not event_id:
+            raise
+
+        existente = buscar_evento(token, event_id)
+        if not existente:
+            raise
+
+        atualizar_evento_payload(token, event_id, payload)
+        atualizado = buscar_evento(token, event_id)
+        if not atualizado:
+            raise RuntimeError(
+                "O Microsoft Graph informou um evento existente para o transactionId, "
+                "mas o evento nao foi confirmado depois da atualizacao."
+            )
+
+        atualizado["_recuperado_por_transaction_id"] = True
+        print(
+            "TransactionId ja utilizado. Evento existente recuperado e atualizado: "
+            f"{event_id}"
+        )
+        return atualizado
 
 
 def atualizar_evento_payload(token, event_id, payload):
@@ -472,8 +510,12 @@ def processar_evento_normal(token, item_id, session_id, item, colunas, resumo):
         if not event_id:
             raise RuntimeError("O Outlook nao retornou o ID do evento criado.")
         item["valores"] = gravar_valor_coluna(token, item_id, session_id, item["graph_index"], item["valores"], colunas, "Outlook Event ID", event_id)
-        resumo["criados"] += 1
-        print("Evento criado e Outlook Event ID gravado no Excel.")
+        if criado.get("_recuperado_por_transaction_id"):
+            resumo["atualizados"] += 1
+            print("Evento existente recuperado e Outlook Event ID corrigido no Excel.")
+        else:
+            resumo["criados"] += 1
+            print("Evento criado e Outlook Event ID gravado no Excel.")
     confirmado = buscar_evento(token, event_id)
     if not confirmado:
         raise RuntimeError("Evento nao confirmado depois da sincronizacao.")
@@ -498,8 +540,12 @@ def processar_politica_vencimento(token, item_id, session_id, item, colunas, res
         else:
             criado = criar_evento_payload(token, payload)
             event_id = criado.get("id")
-            resumo["avisos_criados"] += 1
-            print(f"Aviso criado: {chave}")
+            if criado.get("_recuperado_por_transaction_id"):
+                resumo["avisos_atualizados"] += 1
+                print(f"Aviso recuperado e atualizado: {chave}")
+            else:
+                resumo["avisos_criados"] += 1
+                print(f"Aviso criado: {chave}")
         if not event_id:
             raise RuntimeError(f"O Outlook nao retornou ID para o aviso {chave}.")
         confirmado = buscar_evento(token, event_id)
