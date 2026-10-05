@@ -547,8 +547,7 @@ def obter_cabecalhos(
 
     values = resultado.get("values", [])
 
-    if not values or not values[0\]:
-        raise RuntimeError(
+    if not values or not valuesraise RuntimeError(
             f"A tabela {TABLE_NAME} "
             "nao retornou cabecalhos."
         )
@@ -960,7 +959,7 @@ def montar_evento_normal(registro):
     if recorrencia:
         evento["recurrence"] = recorrencia
 
-    if evento["isReminderOn"\]:
+    if evento["isReminderOn"]:
         evento["reminderMinutesBeforeStart"] = 30
 
     return evento
@@ -1349,4 +1348,380 @@ def processar_evento_normal(
     if (
         categoria
         and categoria
-        not in
+        not in categorias_confirmadas
+    ):
+        raise RuntimeError(
+            "Evento confirmado, mas a categoria "
+            "da Area nao foi aplicada."
+        )
+
+    print(
+        "Confirmado no Outlook: "
+        f"{confirmado.get('subject')}"
+    )
+
+
+def processar_politica_vencimento(
+    token,
+    item_id,
+    session_id,
+    item,
+    colunas,
+    resumo,
+):
+    registro = item["registro"]
+
+    ids_atuais = interpretar_ids(
+        registro.get("Outlook Event ID")
+    )
+
+    ids_finais = {}
+
+    categoria = categoria_da_area(
+        registro.get("Área")
+    )
+
+    chaves = [
+        str(dias)
+        for dias in POLITICA_VENCIMENTO
+    ] + ["vencimento"]
+
+    for chave in chaves:
+        payload = montar_evento_politica(
+            registro,
+            chave,
+        )
+
+        event_id = ids_atuais.get(chave)
+
+        if event_id:
+            existente = buscar_evento(
+                token,
+                event_id,
+            )
+        else:
+            existente = None
+
+        if event_id and existente:
+            atualizar_evento_payload(
+                token,
+                event_id,
+                payload,
+            )
+
+            resumo["avisos_atualizados"] += 1
+
+            print(
+                f"Aviso atualizado: {chave}"
+            )
+
+        else:
+            criado = criar_evento_payload(
+                token,
+                payload,
+            )
+
+            event_id = criado.get("id")
+
+            if not event_id:
+                raise RuntimeError(
+                    "O Outlook nao retornou ID "
+                    f"para o aviso {chave}."
+                )
+
+            resumo["avisos_criados"] += 1
+
+            print(
+                f"Aviso criado: {chave}"
+            )
+
+        confirmado = buscar_evento(
+            token,
+            event_id,
+        )
+
+        if not confirmado:
+            raise RuntimeError(
+                f"Aviso nao confirmado: {chave}"
+            )
+
+        categorias_confirmadas = (
+            confirmado.get("categories")
+            or []
+        )
+
+        if (
+            categoria
+            and categoria
+            not in categorias_confirmadas
+        ):
+            raise RuntimeError(
+                "Categoria da Area nao foi aplicada "
+                f"ao aviso {chave}."
+            )
+
+        ids_finais[chave] = event_id
+
+    item["valores"] = gravar_valor_coluna(
+        token,
+        item_id,
+        session_id,
+        item["graph_index"],
+        item["valores"],
+        colunas,
+        "Outlook Event ID",
+        serializar_ids(ids_finais),
+    )
+
+
+def sincronizar(
+    token,
+    item_id,
+    session_id,
+):
+    colunas = obter_cabecalhos(
+        token,
+        item_id,
+        session_id,
+    )
+
+    linhas = obter_linhas(
+        token,
+        item_id,
+        session_id,
+    )
+
+    registros = obter_registros(
+        colunas,
+        linhas,
+    )
+
+    resumo = {
+        "criados": 0,
+        "atualizados": 0,
+        "excluidos": 0,
+        "avisos_criados": 0,
+        "avisos_atualizados": 0,
+        "ignorados": 0,
+        "erros": 0,
+    }
+
+    print(
+        "Linhas encontradas na tbAgenda: "
+        f"{len(registros)}"
+    )
+
+    for item in registros:
+        registro = item["registro"]
+
+        registro_id = str(
+            registro.get("ID")
+            or ""
+        ).strip()
+
+        print(
+            f"Processando {registro_id} | "
+            f"{registro.get('Nome')} | "
+            f"Status: {registro.get('Status')}"
+        )
+
+        try:
+            status = status_normalizado(
+                registro
+            )
+
+            if status in STATUS_REMOVER:
+                processar_remocao(
+                    token,
+                    item_id,
+                    session_id,
+                    item,
+                    colunas,
+                    resumo,
+                )
+
+            elif status in STATUS_ATIVOS:
+                if usa_politica_vencimento(
+                    registro
+                ):
+                    processar_politica_vencimento(
+                        token,
+                        item_id,
+                        session_id,
+                        item,
+                        colunas,
+                        resumo,
+                    )
+
+                else:
+                    processar_evento_normal(
+                        token,
+                        item_id,
+                        session_id,
+                        item,
+                        colunas,
+                        resumo,
+                    )
+
+            else:
+                resumo["ignorados"] += 1
+
+                print(
+                    "Status nao processado. "
+                    "Linha ignorada."
+                )
+
+        except GraphError as error:
+            resumo["erros"] += 1
+
+            imprimir_erro_graph(
+                registro_id,
+                error,
+            )
+
+        except requests.RequestException as error:
+            resumo["erros"] += 1
+
+            imprimir_erro_comunicacao(
+                registro_id,
+                error,
+            )
+
+        except Exception as error:
+            resumo["erros"] += 1
+
+            imprimir_erro_inesperado(
+                registro_id,
+                error,
+            )
+
+    print(
+        json.dumps(
+            resumo,
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+    if resumo["erros"]:
+        raise RuntimeError(
+            "Uma ou mais linhas falharam. "
+            "Veja os logs acima."
+        )
+
+
+def main():
+    token = None
+    item_id = None
+    session_id = None
+
+    try:
+        token = autenticar()
+
+        identificar_usuario(token)
+
+        garantir_categorias(token)
+
+        arquivo = localizar_excel(token)
+
+        item_id = arquivo["id"]
+
+        session_id = criar_sessao(
+            token,
+            item_id,
+        )
+
+        sincronizar(
+            token,
+            item_id,
+            session_id,
+        )
+
+        fechar_sessao(
+            token,
+            item_id,
+            session_id,
+        )
+
+        session_id = None
+
+        print(
+            "SINCRONIZACAO CONCLUIDA "
+            "COM SUCESSO."
+        )
+
+    except GraphError as error:
+        detalhes = [
+            f"HTTP: {error.status_code}",
+            f"Metodo: {error.method}",
+            f"URL: {error.url}",
+        ]
+
+        if error.request_id:
+            detalhes.append(
+                f"Request ID: {error.request_id}"
+            )
+
+        if error.client_request_id:
+            detalhes.append(
+                "Client Request ID: "
+                f"{error.client_request_id}"
+            )
+
+        detalhes.extend(
+            [
+                "",
+                "Resposta:",
+                formatar_resposta_graph(
+                    error.response_text
+                ),
+            ]
+        )
+
+        if error.payload is not None:
+            detalhes.extend(
+                [
+                    "",
+                    "Payload enviado:",
+                    formatar_payload_para_log(
+                        error.payload
+                    ),
+                ]
+            )
+
+        falhar(
+            "Falha no Microsoft Graph.",
+            "\n".join(detalhes),
+        )
+
+    except requests.RequestException as error:
+        falhar(
+            "Falha de comunicacao "
+            "com a Microsoft.",
+            repr(error),
+        )
+
+    except Exception as error:
+        falhar(
+            "Erro inesperado.",
+            (
+                f"Tipo: {type(error).__name__}\n"
+                f"Detalhes: {repr(error)}"
+            ),
+        )
+
+    finally:
+        if token and item_id and session_id:
+            try:
+                fechar_sessao(
+                    token,
+                    item_id,
+                    session_id,
+                )
+
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    main()
