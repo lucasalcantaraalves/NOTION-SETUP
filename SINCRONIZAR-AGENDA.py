@@ -235,11 +235,11 @@ def chave_coluna(valor):
 
 ALIASES_COLUNAS = {
     "ID": {"id", "identificador", "second brain id"},
-    "Nome": {"nome", "titulo", "tÃ­tulo", "assunto", "evento"},
-    "Status": {"status", "situacao", "situaÃ§Ã£o"},
-    "Ãrea": {"area", "Ã¡rea", "area do second brain", "area second brain"},
+    "Nome": {"nome", "titulo", "título", "assunto", "evento"},
+    "Status": {"status", "situacao", "situação"},
+    "Área": {"area", "área", "area do second brain", "area second brain"},
     "Tipo": {"tipo", "tipo de evento"},
-    "Data InÃ­cio": {
+    "Data Início": {
         "data inicio", "data de inicio", "data inicial", "inicio", "inicio data",
         "data hora inicio", "data hora de inicio", "data e hora inicio",
         "data e hora de inicio", "data de inicio do evento", "inicio do evento",
@@ -248,21 +248,21 @@ ALIASES_COLUNAS = {
         "data de validade", "data vencimento", "vencimento em"
     },
     "Data Fim": {"data fim", "data de fim", "data final", "termino", "data termino", "data de termino"},
-    "Hora InÃ­cio": {"hora inicio", "hora de inicio", "horario inicio", "horario de inicio"},
+    "Hora Início": {"hora inicio", "hora de inicio", "horario inicio", "horario de inicio"},
     "Hora Fim": {"hora fim", "hora de fim", "horario fim", "horario de fim"},
     "Dia Inteiro": {"dia inteiro", "evento de dia inteiro"},
     "Lembrete": {"lembrete", "tem lembrete", "ativar lembrete"},
-    "PolÃ­tica de Aviso": {"politica de aviso", "polÃ­tica de aviso", "politica aviso", "avisos de vencimento"},
-    "RecorrÃªncia": {"recorrencia", "recorrÃªncia", "repeticao", "repetiÃ§Ã£o"},
-    "ReferÃªncia": {"referencia", "referÃªncia", "referencia externa"},
-    "ObservaÃ§Ãµes": {"observacoes", "observaÃ§Ãµes", "notas", "descricao", "descriÃ§Ã£o"},
+    "Política de Aviso": {"politica de aviso", "política de aviso", "politica aviso", "avisos de vencimento"},
+    "Recorrência": {"recorrencia", "recorrência", "repeticao", "repetição"},
+    "Referência": {"referencia", "referência", "referencia externa"},
+    "Observações": {"observacoes", "observações", "notas", "descricao", "descrição"},
     "Outlook Event ID": {"outlook event id", "outlook id", "id do evento outlook", "id evento outlook"},
 }
 
 
 def obter_registros(colunas, rows):
-    # MantÃ©m os nomes originais para gravar no Excel, mas cria tambÃ©m chaves
-    # canÃ´nicas para ler cabeÃ§alhos com pequenas variaÃ§Ãµes de acento/formato.
+    # Mantém os nomes originais para gravar no Excel, mas cria também chaves
+    # canônicas para ler cabeçalhos com pequenas variações de acento/formato.
     mapa_alias = {}
     for canonica, aliases in ALIASES_COLUNAS.items():
         for alias in aliases | {canonica}:
@@ -289,8 +289,8 @@ def excel_datetime(data_serial, hora_serial=0):
     if hora_serial in (None, ""):
         hora_serial = 0
 
-    # O Excel via Graph normalmente retorna datas como nÃºmeros seriais, mas
-    # tambÃ©m aceitamos datas textuais caso a coluna esteja formatada como texto.
+    # O Excel via Graph normalmente retorna datas como números seriais, mas
+    # também aceitamos datas textuais caso a coluna esteja formatada como texto.
     if isinstance(data_serial, str):
         texto = data_serial.strip()
         for formato in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y"):
@@ -321,7 +321,7 @@ def status_normalizado(registro):
 
 
 def usa_politica_vencimento(registro):
-    politica = str(registro.get("PolÃ­tica de Aviso") or "").strip().replace(" ", "")
+    politica = str(registro.get("Política de Aviso") or "").strip().replace(" ", "")
     return valor_sim(registro.get("Lembrete")) and politica == "180/90/30/7"
 
 
@@ -364,7 +364,7 @@ def extrair_dia_semana(valor, inicio):
 
 
 def montar_recorrencia(registro, inicio):
-    original = str(registro.get("RecorrÃªncia") or "Nenhuma").strip()
+    original = str(registro.get("Recorrência") or "Nenhuma").strip()
     valor = normalizar_texto(original)
     if valor in {"", "nenhuma", "nao", "no"}:
         return None
@@ -383,31 +383,31 @@ def montar_recorrencia(registro, inicio):
 
 
 def corpo_evento(registro, complemento=None):
-    linhas = [f"Second Brain ID: {str(registro.get('ID') or '').strip()}", f"Ãrea: {registro.get('Ãrea') or ''}", f"Tipo: {registro.get('Tipo') or ''}"]
-    categoria = categoria_da_area(registro.get("Ãrea"))
+    linhas = [f"Second Brain ID: {str(registro.get('ID') or '').strip()}", f"Área: {registro.get('Área') or ''}", f"Tipo: {registro.get('Tipo') or ''}"]
+    categoria = categoria_da_area(registro.get("Área"))
     if categoria:
         linhas.append(f"Categoria: {categoria}")
     if complemento:
         linhas.append(complemento)
-    if registro.get("ReferÃªncia"):
-        linhas.append(f"Referencia: {registro.get('ReferÃªncia')}")
-    if registro.get("ObservaÃ§Ãµes"):
-        linhas.extend(["", str(registro.get("ObservaÃ§Ãµes"))])
+    if registro.get("Referência"):
+        linhas.append(f"Referencia: {registro.get('Referência')}")
+    if registro.get("Observações"):
+        linhas.extend(["", str(registro.get("Observações"))])
     return "\n".join(linhas)
 
 
 def montar_evento_normal(registro):
     dia_inteiro = valor_sim(registro.get("Dia Inteiro"))
     if dia_inteiro:
-        inicio = excel_datetime(registro.get("Data InÃ­cio"), 0)
-        fim = excel_datetime(registro.get("Data Fim") or registro.get("Data InÃ­cio"), 0) + timedelta(days=1)
+        inicio = excel_datetime(registro.get("Data Início"), 0)
+        fim = excel_datetime(registro.get("Data Fim") or registro.get("Data Início"), 0) + timedelta(days=1)
     else:
-        inicio = excel_datetime(registro.get("Data InÃ­cio"), registro.get("Hora InÃ­cio"))
-        fim = excel_datetime(registro.get("Data Fim") or registro.get("Data InÃ­cio"), registro.get("Hora Fim") or registro.get("Hora InÃ­cio"))
+        inicio = excel_datetime(registro.get("Data Início"), registro.get("Hora Início"))
+        fim = excel_datetime(registro.get("Data Fim") or registro.get("Data Início"), registro.get("Hora Fim") or registro.get("Hora Início"))
         if fim <= inicio:
             fim = inicio + timedelta(hours=1)
     identificador = str(registro.get("ID") or "").strip()
-    evento = {"subject": str(registro.get("Nome") or identificador), "body": {"contentType": "text", "content": corpo_evento(registro)}, "start": {"dateTime": inicio.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": OUTLOOK_TIME_ZONE}, "end": {"dateTime": fim.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": OUTLOOK_TIME_ZONE}, "isAllDay": dia_inteiro, "isReminderOn": valor_sim(registro.get("Lembrete")), "categories": categorias_da_area(registro.get("Ãrea")), "transactionId": str(uuid.uuid5(uuid.NAMESPACE_URL, f"second-brain:{identificador}:principal"))}
+    evento = {"subject": str(registro.get("Nome") or identificador), "body": {"contentType": "text", "content": corpo_evento(registro)}, "start": {"dateTime": inicio.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": OUTLOOK_TIME_ZONE}, "end": {"dateTime": fim.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": OUTLOOK_TIME_ZONE}, "isAllDay": dia_inteiro, "isReminderOn": valor_sim(registro.get("Lembrete")), "categories": categorias_da_area(registro.get("Área")), "transactionId": str(uuid.uuid5(uuid.NAMESPACE_URL, f"second-brain:{identificador}:principal"))}
     recorrencia = montar_recorrencia(registro, inicio)
     if recorrencia:
         evento["recurrence"] = recorrencia
@@ -417,21 +417,21 @@ def montar_evento_normal(registro):
 
 
 def montar_evento_politica(registro, chave):
-    vencimento = excel_datetime(registro.get("Data InÃ­cio"), 0)
+    vencimento = excel_datetime(registro.get("Data Início"), 0)
     nome = str(registro.get("Nome") or registro.get("ID") or "Vencimento")
     identificador = str(registro.get("ID") or "").strip()
     if chave == "vencimento":
         data_evento = vencimento
-        assunto = f"â« VENCE HOJE Â· {nome}"
+        assunto = f"⚫ VENCE HOJE · {nome}"
         complemento = "Politica de aviso: vencimento."
     else:
         dias = int(chave)
         data_evento = vencimento - timedelta(days=dias)
-        rotulos = {180: "ðµ INFORMATIVO", 90: "ð¡ ATENCAO", 30: "ð  IMPORTANTE", 7: "ð´ URGENTE"}
-        assunto = f"{rotulos[dias]} Â· {nome} vence em {dias} dias"
+        rotulos = {180: "🔵 INFORMATIVO", 90: "🟡 ATENCAO", 30: "🟠 IMPORTANTE", 7: "🔴 URGENTE"}
+        assunto = f"{rotulos[dias]} · {nome} vence em {dias} dias"
         complemento = f"Politica de aviso: {dias} dias antes do vencimento."
     fim = data_evento + timedelta(days=1)
-    return {"subject": assunto, "body": {"contentType": "text", "content": corpo_evento(registro, complemento)}, "start": {"dateTime": data_evento.strftime("%Y-%m-%dT00:00:00"), "timeZone": OUTLOOK_TIME_ZONE}, "end": {"dateTime": fim.strftime("%Y-%m-%dT00:00:00"), "timeZone": OUTLOOK_TIME_ZONE}, "isAllDay": True, "isReminderOn": True, "reminderMinutesBeforeStart": 0, "categories": categorias_da_area(registro.get("Ãrea")), "transactionId": str(uuid.uuid5(uuid.NAMESPACE_URL, f"second-brain:{identificador}:aviso:{chave}"))}
+    return {"subject": assunto, "body": {"contentType": "text", "content": corpo_evento(registro, complemento)}, "start": {"dateTime": data_evento.strftime("%Y-%m-%dT00:00:00"), "timeZone": OUTLOOK_TIME_ZONE}, "end": {"dateTime": fim.strftime("%Y-%m-%dT00:00:00"), "timeZone": OUTLOOK_TIME_ZONE}, "isAllDay": True, "isReminderOn": True, "reminderMinutesBeforeStart": 0, "categories": categorias_da_area(registro.get("Área")), "transactionId": str(uuid.uuid5(uuid.NAMESPACE_URL, f"second-brain:{identificador}:aviso:{chave}"))}
 
 
 def endpoint_evento(event_id, calendar_id=None):
@@ -507,7 +507,7 @@ def limpar_html(texto):
 def identificar_area_na_descricao(descricao):
     texto = limpar_html(descricao)
     for linha in texto.splitlines():
-        match = re.match(r"^\s*(?:Ã¡rea|area)\s*[:\-â]\s*(.*?)\s*$", linha, flags=re.IGNORECASE)
+        match = re.match(r"^\s*(?:área|area)\s*[:\-–]\s*(.*?)\s*$", linha, flags=re.IGNORECASE)
         if not match:
             continue
         valor = normalizar_texto(match.group(1))
@@ -648,9 +648,9 @@ def sincronizar(token, item_id, session_id):
     print("[CABECALHOS TBAGENDA] " + json.dumps(colunas, ensure_ascii=False))
     registros = obter_registros(colunas, obter_linhas(token, item_id, session_id))
     chaves_encontradas = {chave_coluna(coluna) for coluna in colunas}
-    aliases_data = {chave_coluna(alias) for alias in ALIASES_COLUNAS["Data InÃ­cio"] | {"Data InÃ­cio"}}
+    aliases_data = {chave_coluna(alias) for alias in ALIASES_COLUNAS["Data Início"] | {"Data Início"}}
     if not chaves_encontradas.intersection(aliases_data):
-        print("[ATENCAO] Nenhuma coluna reconhecida como Data InÃ­cio. As linhas que dependem dessa data serÃ£o registradas como erro; a varredura do Outlook continuarÃ¡.")
+        print("[ATENCAO] Nenhuma coluna reconhecida como Data Início. As linhas que dependem dessa data serão registradas como erro; a varredura do Outlook continuará.")
     resumo = {"criados": 0, "atualizados": 0, "excluidos": 0, "avisos_criados": 0, "avisos_atualizados": 0, "ignorados": 0, "erros": 0}
     print(f"Linhas encontradas na tbAgenda: {len(registros)}")
     for item in registros:
@@ -679,7 +679,7 @@ def sincronizar(token, item_id, session_id):
             resumo["erros"] += 1
             print(f"[ERRO INESPERADO] {registro_id}: {type(error).__name__}: {error}")
     print("[RESUMO SINCRONIZACAO EXCEL] " + json.dumps(resumo, ensure_ascii=False))
-    # NÃ£o interrompe a rotina aqui: a varredura independente do Outlook deve
+    # Não interrompe a rotina aqui: a varredura independente do Outlook deve
     # acontecer mesmo se uma ou mais linhas do Excel falharem.
     return resumo
 
@@ -697,7 +697,7 @@ def listar_calendarios(token):
 
 
 def janela_varredura_outlook():
-    """Retorna a janela de hoje atÃ© trÃªs meses corridos Ã  frente, no fuso de BrasÃ­lia."""
+    """Retorna a janela de hoje até três meses corridos à frente, no fuso de Brasília."""
     fuso = ZoneInfo("America/Sao_Paulo")
     agora = datetime.now(fuso)
     inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -706,7 +706,7 @@ def janela_varredura_outlook():
     if mes > 12:
         ano += (mes - 1) // 12
         mes = ((mes - 1) % 12) + 1
-    # Se o mÃªs de destino nÃ£o tiver o dia de hoje (ex.: 31), usa o Ãºltimo dia do mÃªs.
+    # Se o mês de destino não tiver o dia de hoje (ex.: 31), usa o último dia do mês.
     import calendar as _calendar
     dia = min(inicio.day, _calendar.monthrange(ano, mes)[1])
     fim = inicio.replace(year=ano, month=mes, day=dia)
@@ -714,7 +714,7 @@ def janela_varredura_outlook():
 
 
 def listar_eventos_calendario(token, calendar_id, inicio, fim):
-    # calendarView limita a busca temporal e inclui ocorrÃªncias de eventos recorrentes.
+    # calendarView limita a busca temporal e inclui ocorrências de eventos recorrentes.
     endpoint = f"/me/calendars/{quote(str(calendar_id), safe='')}/calendarView"
     params = {
         "startDateTime": inicio,
@@ -732,25 +732,54 @@ def listar_eventos_calendario(token, calendar_id, inicio, fim):
 
 
 def classificar_eventos_de_todos_calendarios(token):
+    """Classifica eventos na janela temporal, sem tentar alterar calendarios somente-leitura."""
     calendarios = listar_calendarios(token)
     inicio, fim = janela_varredura_outlook()
-    resumo = {"calendarios": len(calendarios), "eventos_examinados": 0, "categorias_corrigidas": 0, "ambiguos": 0, "erros": 0, "calendarios_sem_permissao": 0}
+    resumo = {
+        "calendarios": len(calendarios),
+        "calendarios_somente_leitura": 0,
+        "eventos_examinados": 0,
+        "eventos_ignorados_somente_leitura": 0,
+        "categorias_corrigidas": 0,
+        "ja_corretos": 0,
+        "ambiguos": 0,
+        "erros": 0,
+    }
+    amostras_erros = []
     print(f"[VARREDURA OUTLOOK] {len(calendarios)} calendarios; janela {inicio} ate {fim}.")
+
     for calendario in calendarios:
         calendar_id = calendario.get("id")
         nome = calendario.get("name") or "(sem nome)"
         if not calendar_id:
-            print(f"[CALENDARIO IGNORADO] {nome}: sem ID.")
             continue
-        print(f"[CALENDARIO] {nome}")
+
+        # O calendário padrão de aniversários é gerenciado pelo Outlook e é somente-leitura.
+        nome_normalizado = normalizar_texto(nome)
+        somente_leitura = calendario.get("canEdit") is False or "calendario de aniversarios" in nome_normalizado
+        if somente_leitura:
+            resumo["calendarios_somente_leitura"] += 1
+            try:
+                eventos = listar_eventos_calendario(token, calendar_id, inicio, fim)
+                resumo["eventos_examinados"] += len(eventos)
+                resumo["eventos_ignorados_somente_leitura"] += len(eventos)
+                print(f"[CALENDARIO SOMENTE LEITURA] {nome}: {len(eventos)} eventos examinados; nenhuma alteração tentada.")
+            except GraphError as error:
+                resumo["erros"] += 1
+                if len(amostras_erros) < 3:
+                    amostras_erros.append(f"{nome}: HTTP {error.status_code}")
+            continue
+
         try:
             eventos = listar_eventos_calendario(token, calendar_id, inicio, fim)
         except GraphError as error:
             resumo["erros"] += 1
-            resumo["calendarios_sem_permissao"] += 1 if error.status_code in {403, 404} else 0
-            print(f"[ERRO CALENDARIO] {nome}: HTTP {error.status_code} | {formatar_resposta_graph(error.response_text)}")
+            if len(amostras_erros) < 3:
+                amostras_erros.append(f"Calendario {nome}: HTTP {error.status_code}")
+            print(f"[ERRO CALENDARIO] {nome}: HTTP {error.status_code}")
             continue
-        print(f"[EVENTOS ENCONTRADOS] {len(eventos)}")
+
+        print(f"[CALENDARIO] {nome}: {len(eventos)} eventos.")
         for evento in eventos:
             resumo["eventos_examinados"] += 1
             assunto = evento.get("subject") or "(sem assunto)"
@@ -760,15 +789,34 @@ def classificar_eventos_de_todos_calendarios(token):
                     resumo["categorias_corrigidas"] += 1
                 elif resultado == "ambiguo":
                     resumo["ambiguos"] += 1
+                elif resultado == "ok":
+                    resumo["ja_corretos"] += 1
             except GraphError as error:
+                # Se o Graph indicar calendário somente-leitura, para de tentar modificar
+                # os demais eventos desse calendário e contabiliza-os como ignorados.
+                texto_erro = (error.response_text or "").lower()
+                if "read-only calendars can't be modified" in texto_erro or "read only calendar" in texto_erro:
+                    resumo["calendarios_somente_leitura"] += 1
+                    restantes = len(eventos) - eventos.index(evento) - 1
+                    resumo["eventos_ignorados_somente_leitura"] += restantes + 1
+                    resumo["eventos_examinados"] += restantes
+                    print(f"[CALENDARIO SOMENTE LEITURA] {nome}: alterações interrompidas; {restantes + 1} eventos sem modificação.")
+                    break
                 resumo["erros"] += 1
-                print(f"[ERRO EVENTO] {assunto}: HTTP {error.status_code} | {formatar_resposta_graph(error.response_text)}")
+                if len(amostras_erros) < 3:
+                    amostras_erros.append(f"{assunto}: HTTP {error.status_code}")
+                print(f"[ERRO EVENTO] {assunto}: HTTP {error.status_code}")
             except Exception as error:
                 resumo["erros"] += 1
-                print(f"[ERRO EVENTO] {assunto}: {type(error).__name__}: {error}")
+                if len(amostras_erros) < 3:
+                    amostras_erros.append(f"{assunto}: {type(error).__name__}")
+                print(f"[ERRO EVENTO] {assunto}: {type(error).__name__}")
+
+    if amostras_erros:
+        resumo["amostras_erros"] = amostras_erros
     print("[RESUMO VARREDURA OUTLOOK] " + json.dumps(resumo, ensure_ascii=False))
     if resumo["erros"]:
-        raise RuntimeError("A varredura do Outlook teve erros; consulte o resumo e os logs.")
+        raise RuntimeError("A varredura do Outlook encontrou erros reais; consulte as amostras no resumo.")
 
 
 def main():
@@ -776,7 +824,7 @@ def main():
     item_id = None
     session_id = None
     try:
-        print("[VERSAO SCRIPT] SINCRONIZAR-AGENDA.py | varredura Outlook limitada a hoje + 3 meses | 2026-10-12-v3")
+        print("[VERSAO SCRIPT] SINCRONIZAR-AGENDA.py | varredura Outlook limitada a hoje + 3 meses | 2026-10-12-v4")
         token = autenticar()
         identificar_usuario(token)
         garantir_categorias(token)
@@ -790,7 +838,7 @@ def main():
         fechar_sessao(token, item_id, session_id)
         session_id = None
         if resumo_excel.get("erros"):
-            raise RuntimeError("A varredura do Outlook foi executada, mas uma ou mais linhas da tbAgenda falharam. Consulte os logs e os cabeÃ§alhos impressos.")
+            raise RuntimeError("A varredura do Outlook foi executada, mas uma ou mais linhas da tbAgenda falharam. Consulte os logs e os cabeçalhos impressos.")
         print("SINCRONIZACAO E VARREDURA CONCLUIDAS COM SUCESSO.")
     except GraphError as error:
         falhar("Falha no Microsoft Graph.", f"HTTP: {error.status_code}\nMetodo: {error.method}\nURL: {error.url}\nRequest ID: {error.request_id}\nResposta:\n{formatar_resposta_graph(error.response_text)}")
