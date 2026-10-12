@@ -9,6 +9,7 @@ import time
 import unicodedata
 import uuid
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.parse import quote
 
@@ -695,9 +696,32 @@ def listar_calendarios(token):
     return calendarios
 
 
-def listar_eventos_calendario(token, calendar_id):
-    endpoint = f"/me/calendars/{quote(str(calendar_id), safe='')}/events"
-    params = {"$select": "id,subject,body,categories,type,seriesMasterId", "$top": "100"}
+def janela_varredura_outlook():
+    """Retorna a janela de hoje atÃ© trÃªs meses corridos Ã  frente, no fuso de BrasÃ­lia."""
+    fuso = ZoneInfo("America/Sao_Paulo")
+    agora = datetime.now(fuso)
+    inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    ano = inicio.year
+    mes = inicio.month + 3
+    if mes > 12:
+        ano += (mes - 1) // 12
+        mes = ((mes - 1) % 12) + 1
+    # Se o mÃªs de destino nÃ£o tiver o dia de hoje (ex.: 31), usa o Ãºltimo dia do mÃªs.
+    import calendar as _calendar
+    dia = min(inicio.day, _calendar.monthrange(ano, mes)[1])
+    fim = inicio.replace(year=ano, month=mes, day=dia)
+    return inicio.isoformat(), fim.isoformat()
+
+
+def listar_eventos_calendario(token, calendar_id, inicio, fim):
+    # calendarView limita a busca temporal e inclui ocorrÃªncias de eventos recorrentes.
+    endpoint = f"/me/calendars/{quote(str(calendar_id), safe='')}/calendarView"
+    params = {
+        "startDateTime": inicio,
+        "endDateTime": fim,
+        "$select": "id,subject,body,categories,type,seriesMasterId,start,end,isAllDay",
+        "$top": "100",
+    }
     eventos = []
     while endpoint:
         resultado = graph_request("GET", endpoint, token, params=params)
@@ -709,8 +733,9 @@ def listar_eventos_calendario(token, calendar_id):
 
 def classificar_eventos_de_todos_calendarios(token):
     calendarios = listar_calendarios(token)
+    inicio, fim = janela_varredura_outlook()
     resumo = {"calendarios": len(calendarios), "eventos_examinados": 0, "categorias_corrigidas": 0, "ambiguos": 0, "erros": 0, "calendarios_sem_permissao": 0}
-    print(f"[VARREDURA OUTLOOK] {len(calendarios)} calendarios retornados pelo Graph.")
+    print(f"[VARREDURA OUTLOOK] {len(calendarios)} calendarios; janela {inicio} ate {fim}.")
     for calendario in calendarios:
         calendar_id = calendario.get("id")
         nome = calendario.get("name") or "(sem nome)"
@@ -719,7 +744,7 @@ def classificar_eventos_de_todos_calendarios(token):
             continue
         print(f"[CALENDARIO] {nome}")
         try:
-            eventos = listar_eventos_calendario(token, calendar_id)
+            eventos = listar_eventos_calendario(token, calendar_id, inicio, fim)
         except GraphError as error:
             resumo["erros"] += 1
             resumo["calendarios_sem_permissao"] += 1 if error.status_code in {403, 404} else 0
@@ -751,7 +776,7 @@ def main():
     item_id = None
     session_id = None
     try:
-        print("[VERSAO SCRIPT] SINCRONIZAR-AGENDA.py | correÃ§Ã£o de cabeÃ§alhos e varredura independente | 2026-10-12-v2")
+        print("[VERSAO SCRIPT] SINCRONIZAR-AGENDA.py | varredura Outlook limitada a hoje + 3 meses | 2026-10-12-v3")
         token = autenticar()
         identificar_usuario(token)
         garantir_categorias(token)
