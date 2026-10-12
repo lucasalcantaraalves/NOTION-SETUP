@@ -228,12 +228,55 @@ def obter_linhas(token, item_id, session_id):
     return acumulado
 
 
+def chave_coluna(valor):
+    return normalizar_texto(valor).replace("_", " ").replace("-", " ").replace("/", " ").replace("(", " ").replace(")", " ").strip()
+
+
+ALIASES_COLUNAS = {
+    "ID": {"id", "identificador", "second brain id"},
+    "Nome": {"nome", "titulo", "tÃ­tulo", "assunto", "evento"},
+    "Status": {"status", "situacao", "situaÃ§Ã£o"},
+    "Ãrea": {"area", "Ã¡rea", "area do second brain", "area second brain"},
+    "Tipo": {"tipo", "tipo de evento"},
+    "Data InÃ­cio": {
+        "data inicio", "data de inicio", "data inicial", "inicio", "inicio data",
+        "data hora inicio", "data hora de inicio", "data e hora inicio",
+        "data e hora de inicio", "data de inicio do evento", "inicio do evento",
+        "data do evento", "data evento", "data compromisso", "data do compromisso",
+        "data de vencimento", "vencimento", "validade", "data validade",
+        "data de validade", "data vencimento", "vencimento em"
+    },
+    "Data Fim": {"data fim", "data de fim", "data final", "termino", "data termino", "data de termino"},
+    "Hora InÃ­cio": {"hora inicio", "hora de inicio", "horario inicio", "horario de inicio"},
+    "Hora Fim": {"hora fim", "hora de fim", "horario fim", "horario de fim"},
+    "Dia Inteiro": {"dia inteiro", "evento de dia inteiro"},
+    "Lembrete": {"lembrete", "tem lembrete", "ativar lembrete"},
+    "PolÃ­tica de Aviso": {"politica de aviso", "polÃ­tica de aviso", "politica aviso", "avisos de vencimento"},
+    "RecorrÃªncia": {"recorrencia", "recorrÃªncia", "repeticao", "repetiÃ§Ã£o"},
+    "ReferÃªncia": {"referencia", "referÃªncia", "referencia externa"},
+    "ObservaÃ§Ãµes": {"observacoes", "observaÃ§Ãµes", "notas", "descricao", "descriÃ§Ã£o"},
+    "Outlook Event ID": {"outlook event id", "outlook id", "id do evento outlook", "id evento outlook"},
+}
+
+
 def obter_registros(colunas, rows):
+    # MantÃ©m os nomes originais para gravar no Excel, mas cria tambÃ©m chaves
+    # canÃ´nicas para ler cabeÃ§alhos com pequenas variaÃ§Ãµes de acento/formato.
+    mapa_alias = {}
+    for canonica, aliases in ALIASES_COLUNAS.items():
+        for alias in aliases | {canonica}:
+            mapa_alias[chave_coluna(alias)] = canonica
     registros = []
     for posicao, row in enumerate(rows):
         matriz = row.get("values", [])
         valores = matriz[0] if matriz else []
         registro = {coluna: valores[i] if i < len(valores) else "" for i, coluna in enumerate(colunas)}
+        for i, coluna in enumerate(colunas):
+            canonica = mapa_alias.get(chave_coluna(coluna))
+            if canonica and canonica not in registro:
+                registro[canonica] = valores[i] if i < len(valores) else ""
+            elif canonica and (registro.get(canonica) in (None, "") or coluna == canonica):
+                registro[canonica] = valores[i] if i < len(valores) else ""
         if any(str(valor or "").strip() for valor in valores):
             registros.append({"graph_index": row.get("index", posicao), "valores": valores, "registro": registro})
     return registros
@@ -241,9 +284,30 @@ def obter_registros(colunas, rows):
 
 def excel_datetime(data_serial, hora_serial=0):
     if data_serial in (None, ""):
-        raise ValueError("Data de inicio nao informada.")
+        raise ValueError("Data de inicio nao informada; confira [CABECALHOS TBAGENDA] e os valores da linha.")
     if hora_serial in (None, ""):
         hora_serial = 0
+
+    # O Excel via Graph normalmente retorna datas como nÃºmeros seriais, mas
+    # tambÃ©m aceitamos datas textuais caso a coluna esteja formatada como texto.
+    if isinstance(data_serial, str):
+        texto = data_serial.strip()
+        for formato in ("%d/%m/%Y", "%d/%m/%Y %H:%M", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y"):
+            try:
+                data = datetime.strptime(texto, formato)
+                break
+            except ValueError:
+                data = None
+        if data is not None:
+            if isinstance(hora_serial, str) and hora_serial.strip():
+                hora_txt = hora_serial.strip()
+                for formato_hora in ("%H:%M", "%H:%M:%S"):
+                    try:
+                        hora = datetime.strptime(hora_txt, formato_hora).time()
+                        return data.replace(hour=hora.hour, minute=hora.minute, second=hora.second)
+                    except ValueError:
+                        pass
+            return data
     return datetime(1899, 12, 30) + timedelta(days=float(data_serial) + float(hora_serial))
 
 
@@ -580,7 +644,12 @@ def processar_politica_vencimento(token, item_id, session_id, item, colunas, res
 
 def sincronizar(token, item_id, session_id):
     colunas = obter_cabecalhos(token, item_id, session_id)
+    print("[CABECALHOS TBAGENDA] " + json.dumps(colunas, ensure_ascii=False))
     registros = obter_registros(colunas, obter_linhas(token, item_id, session_id))
+    chaves_encontradas = {chave_coluna(coluna) for coluna in colunas}
+    aliases_data = {chave_coluna(alias) for alias in ALIASES_COLUNAS["Data InÃ­cio"] | {"Data InÃ­cio"}}
+    if not chaves_encontradas.intersection(aliases_data):
+        print("[ATENCAO] Nenhuma coluna reconhecida como Data InÃ­cio. As linhas que dependem dessa data serÃ£o registradas como erro; a varredura do Outlook continuarÃ¡.")
     resumo = {"criados": 0, "atualizados": 0, "excluidos": 0, "avisos_criados": 0, "avisos_atualizados": 0, "ignorados": 0, "erros": 0}
     print(f"Linhas encontradas na tbAgenda: {len(registros)}")
     for item in registros:
@@ -609,8 +678,9 @@ def sincronizar(token, item_id, session_id):
             resumo["erros"] += 1
             print(f"[ERRO INESPERADO] {registro_id}: {type(error).__name__}: {error}")
     print("[RESUMO SINCRONIZACAO EXCEL] " + json.dumps(resumo, ensure_ascii=False))
-    if resumo["erros"]:
-        raise RuntimeError("Uma ou mais linhas da tbAgenda falharam. Consulte os logs.")
+    # NÃ£o interrompe a rotina aqui: a varredura independente do Outlook deve
+    # acontecer mesmo se uma ou mais linhas do Excel falharem.
+    return resumo
 
 
 def listar_calendarios(token):
@@ -681,17 +751,21 @@ def main():
     item_id = None
     session_id = None
     try:
+        print("[VERSAO SCRIPT] SINCRONIZAR-AGENDA.py | correÃ§Ã£o de cabeÃ§alhos e varredura independente | 2026-10-12-v2")
         token = autenticar()
         identificar_usuario(token)
         garantir_categorias(token)
         arquivo = localizar_excel(token)
         item_id = arquivo["id"]
         session_id = criar_sessao(token, item_id)
-        sincronizar(token, item_id, session_id)
-        # Nova rotina independente: examina eventos criados diretamente no Outlook.
+        resumo_excel = sincronizar(token, item_id, session_id)
+        # Rotina independente: examina eventos criados diretamente no Outlook,
+        # mesmo quando alguma linha do Excel falhou.
         classificar_eventos_de_todos_calendarios(token)
         fechar_sessao(token, item_id, session_id)
         session_id = None
+        if resumo_excel.get("erros"):
+            raise RuntimeError("A varredura do Outlook foi executada, mas uma ou mais linhas da tbAgenda falharam. Consulte os logs e os cabeÃ§alhos impressos.")
         print("SINCRONIZACAO E VARREDURA CONCLUIDAS COM SUCESSO.")
     except GraphError as error:
         falhar("Falha no Microsoft Graph.", f"HTTP: {error.status_code}\nMetodo: {error.method}\nURL: {error.url}\nRequest ID: {error.request_id}\nResposta:\n{formatar_resposta_graph(error.response_text)}")
